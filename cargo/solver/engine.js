@@ -1,5 +1,6 @@
-import { allowedOrientations, normalizeInput, solveBaseline } from './core.js';
+import { allowedOrientations, normalizeInput } from './core.js';
 import { validateResult } from './validation.js';
+import { comparePlans, searchPlans } from './search.js';
 
 // Only a single-box proof is a hard "cannot fit" diagnosis. A failed heuristic
 // is not evidence that the remaining order is physically impossible.
@@ -45,7 +46,35 @@ export function assessPlan(input, result) {
 }
 
 export async function solvePlan(input, controls = {}) {
-  const result = assessPlan(input, solveBaseline(input, controls));
-  if (!result.audit.valid) throw new Error('方案未通过独立校验，不能执行：' + result.audit.errors.slice(0, 3).map(item => item.message).join('；'));
-  return result;
+  const now = controls.now ?? (() => performance.now());
+  const started = now(), budgetMs = Math.max(1, Math.min(120000, controls.budgetMs ?? 30000));
+  const deadline = Math.min(controls.deadline ?? Infinity, started + budgetMs);
+  let best, attempts = 0, validCandidates = 0, rejectedCandidates = 0, bestAttempt = 0, strategy = 'baseline';
+  const failures = new Set();
+  const summary = stopReason => ({ budgetMs, elapsedMs: Math.max(0, now() - started), attempts,
+    validCandidates, rejectedCandidates, bestAttempt, strategy, stopReason });
+  for (const event of searchPlans(input, { ...controls, now, deadline })) {
+    if (event.type === 'candidate') {
+      attempts = Math.max(attempts, event.attempt);
+      const candidate = assessPlan(input, event.result);
+      if (candidate.audit.valid) {
+        validCandidates++;
+        if (comparePlans(candidate, best, input) > 0) {
+          best = candidate; bestAttempt = event.attempt; strategy = event.strategy;
+          best.solverVersion = 'cargo-search/0.7.0';
+          best.search = summary('completed');
+          controls.onProgress?.({ attempts, validCandidates, rejectedCandidates, best });
+        }
+      } else {
+        rejectedCandidates++;
+        candidate.audit.errors.slice(0, 3).forEach(error => failures.add(error.message));
+      }
+    } else controls.onProgress?.({ ...event, attempts, validCandidates, rejectedCandidates });
+    // Yield actual event-loop turns so the worker can receive cancellation.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    if (controls.shouldStop?.() || now() >= deadline) break;
+  }
+  if (!best) throw new Error('未找到通过独立校验的方案：' + [...failures].slice(0, 3).join('；'));
+  best.search = summary(controls.shouldStop?.() ? 'cancelled' : now() >= deadline ? 'time-limit' : 'completed');
+  return best;
 }
