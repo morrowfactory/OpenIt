@@ -93,6 +93,8 @@ Reproducible short links retain the input conditions and result summary. Old lin
 
 `cargo/solver/validation.js` independently recomputes the result instead of trusting solver claims. Invalid geometry, quantities, support or known load limits cannot become an executable result. Cross-section gaps (including height steps) are measured separately and flagged for securing review. A heuristic failure is reported as an unresolved search, not proof of physical impossibility. Passing geometry checks is not transport-safety certification.
 
+`search.js` supplements the baseline with a deterministic sequence of maximal-space candidates, different product orders and orientations. `engine.js` audits each candidate and keeps the best valid result: loading count/volume, container count, then balance or compactness according to the selected goal. Longer searches retain their shorter deterministic prefix; a completed finite search is not proof of optimality. Pallet packing currently uses the corrected layer-based baseline, not the loose-carton multi-start search.
+
 ## Deployment
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the production process, PM2 naming, and historical aliases.

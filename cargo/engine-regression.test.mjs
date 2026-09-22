@@ -28,3 +28,25 @@ test('actual result audit rejects a corrupted placement', async () => {
   result.placements[0].x = -10;
   assert.equal(assessPlan(input, result).audit.valid, false);
 });
+
+test('integrated search selects the audited one-container six-carton solution', async () => {
+  const config = { ...input, container: { l: 600, w: 400, h: 100, kg: 100, quantity: 2 },
+    products: [
+      { ...input.products[0], l: 200, w: 200, h: 100, q: 3, stackable: false },
+      { ...input.products[0], sku: 'B', l: 100, w: 300, h: 100, q: 3, stackable: false },
+    ] };
+  const result = await solvePlan(config, { maxAttempts: 6 });
+  assert.deepEqual(result.loadedByProduct, [3, 3]);
+  assert.equal(result.metrics.containersUsed, 1);
+  assert.equal(result.metrics.oversizedGapCount, 0);
+  assert.equal(result.audit.valid, true);
+  assert.equal(result.search.attempts, 6);
+});
+
+test('cancelling integrated search retains a validated candidate', async () => {
+  let cancelled = false;
+  const result = await solvePlan(input, { shouldStop: () => cancelled, onProgress: progress => { if (progress.best) cancelled = true; } });
+  assert.equal(result.audit.valid, true);
+  assert.equal(result.search.stopReason, 'cancelled');
+  assert.equal(result.search.attempts, 0);
+});
