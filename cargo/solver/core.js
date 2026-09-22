@@ -539,6 +539,7 @@ class Rl {
                 quantity: _.quantity
             })),
             o = [],
+            unpackableSeeds = new Set(),
             availablePallets = t.palletTypes.map(type => type.supplyMode === "limited" ? Math.max(0, type.quantity ?? 0) : Infinity);
         let c = 0;
         const l = 1e5 + t.products.reduce((_, u) => _ + u.quantity, 0);
@@ -547,15 +548,15 @@ class Rl {
             let _ = -1,
                 u = -1;
             for (const T of r)
-                if (a[T].quantity > 0 && availablePallets[s.get(T)] > 0) {
+                if (a[T].quantity > 0 && availablePallets[s.get(T)] > 0 && !unpackableSeeds.has(T)) {
                     _ = s.get(T), u = T;
                     break
                 } if (_ < 0) break;
             const h = t.palletTypes[_],
-                w = this.buildPalletUnit(t, a, _, h, n, e, this.options.mode === "single-sku" ? u : void 0, controls);
+                w = this.buildPalletUnit(t, a, _, h, n, e, this.options.mode === "single-sku" ? u : void 0, controls, t.products[u].priorityGroup ?? 1);
             if (w.items.length === 0) {
-                if (a.every(T => T.quantity <= 0 || t.products[T.productIndex].palletPolicy === "forbidden")) break;
-                break
+                unpackableSeeds.add(u);
+                continue
             }
             o.push(w);
             availablePallets[_] -= 1;
@@ -594,7 +595,7 @@ class Rl {
             solverVersion: "pallet-layer/0.2.0"
         }
     }
-    buildPalletUnit(t, e, n, s, r, a, o, controls = {}) {
+    buildPalletUnit(t, e, n, s, r, a, o, controls = {}, priorityGroup = 1) {
         const c = s.heightMm,
             l = s.maxLoadedHeightMm,
             d = s.maxLoadG,
@@ -618,6 +619,9 @@ class Rl {
             const O = [];
             for (let $ = 0; $ < e.length; $ += 1) {
                 if (o !== void 0 && $ !== o) continue;
+                // A pallet is loaded/unloaded as one unit, even when SKU mixing
+                // is enabled. Different unloading groups need separate pallets.
+                if ((t.products[$].priorityGroup ?? 1) !== priorityGroup) continue;
                 const Z = e[$];
                 if (Z.quantity <= 0) continue;
                 const ut = r.get(Z.productIndex) ?? [];
@@ -658,7 +662,6 @@ class Rl {
                 K = [];
             if (this.options.mode === "mixed-max" && this.options.allowLooseCargo)
                 for (const $ of O) {
-                    if ((t.products[$.pendingIndex].priorityGroup ?? 1) !== (t.products[N.pendingIndex].priorityGroup ?? 1)) continue;
                     if ($ === N || $.orientation.lengthMm * $.orientation.widthMm * $.orientation.heightMm > V || Math.abs($.orientation.heightMm - N.orientation.heightMm) > 20) continue;
                     e[$.pendingIndex].quantity - (b.get($.pendingIndex) ?? 0) > 0 && K.push($)
                 }
@@ -745,7 +748,8 @@ class Rl {
             })
         }
         const A = _.reduce((O, N) => O + N.orientation.lengthMm * N.orientation.widthMm * N.orientation.heightMm, 0),
-            G = m * x * R;
+            contentHeightMm = _.reduce((height, item) => Math.max(height, item.z + item.orientation.heightMm), 0),
+            G = m * x * contentHeightMm;
         return {
             palletTypeIndex: n,
             palletTypeId: s.id,
@@ -762,7 +766,8 @@ class Rl {
                 }
             }),
             items: _,
-            totalHeightMm: c + R,
+            priorityGroup,
+            totalHeightMm: c + contentHeightMm,
             totalWeightG: T + (s.emptyWeightG ?? 0),
             layerCount: P,
             utilization: G > 0 ? A / G : 0,
@@ -883,6 +888,8 @@ class Ul {
             index: u
         }));
         n.sort((_, u) => {
+            const group = (_.unit.priorityGroup ?? 1) - (u.unit.priorityGroup ?? 1);
+            if (group) return group;
             const h = _.unit.palletLengthMm * _.unit.palletWidthMm * _.unit.totalHeightMm;
             return u.unit.palletLengthMm * u.unit.palletWidthMm * u.unit.totalHeightMm - h
         });
@@ -910,7 +917,8 @@ class Ul {
             const h = {
                 spaces: [bi(0, 0, 0, u.innerLengthMm, u.innerWidthMm, u.innerHeightMm)],
                 placed: [],
-                usedWeightG: 0
+                usedWeightG: 0,
+                activePriorityGroup: 0
             };
             let w = 0,
                 T = !0;
@@ -924,6 +932,10 @@ class Ul {
                         if (!I || I.unit === null) continue;
                         const M = I.unit,
                             S = M.totalWeightG;
+                        const priorityGroup = M.priorityGroup ?? 1;
+                        if (priorityGroup < h.activePriorityGroup) continue;
+                        if ((e.priorityGroupMode ?? "virtual-wall") === "virtual-wall" && h.placed.some(item =>
+                            (item.unit.priorityGroup ?? 1) < priorityGroup && R.x < item.box.x2 - re)) continue;
                         if (R.z > re) continue;
                         if (h.usedWeightG + S > u.maxPayloadG) continue;
                         const A = [{
@@ -953,12 +965,16 @@ class Ul {
                                     break
                                 } if (K) continue;
                             const z = G.length * G.width * G.height;
-                            z > P && (P = z, E = {
+                            const earlier = !E || priorityGroup < E.priorityGroup || priorityGroup === E.priorityGroup && (
+                                V.x < E.box.x - re || Math.abs(V.x - E.box.x) <= re && (
+                                V.y < E.box.y - re || Math.abs(V.y - E.box.y) <= re && z > P));
+                            earlier && (P = z, E = {
                                 space: R,
                                 unit: M,
                                 box: V,
                                 pendingIndex: b,
-                                rotated: G.rotated
+                                rotated: G.rotated,
+                                priorityGroup
                             })
                         }
                     }
@@ -978,6 +994,7 @@ class Ul {
                         totalHeightMm: R.totalHeightMm, totalWeightG: R.totalWeightG,
                         emptyWeightG: e.palletTypes[R.palletTypeIndex]?.emptyWeightG ?? 0,
                         tareWeightKnown: e.palletTypes[R.palletTypeIndex]?.tareWeightKnown ?? false,
+                        priorityGroup: R.priorityGroup ?? 1,
                         palletTypeId: R.palletTypeId, palletTypeIndex: R.palletTypeIndex,
                         minimumGapMm: e.palletTypes[R.palletTypeIndex]?.minimumGapMm ?? 0,
                         rotated: M
@@ -988,7 +1005,7 @@ class Ul {
                         globalX: S,
                         globalY: A,
                         globalZ: G
-                    }), h.usedWeightG += R.totalWeightG;
+                    }), h.usedWeightG += R.totalWeightG, h.activePriorityGroup = Math.max(h.activePriorityGroup, R.priorityGroup ?? 1);
                     for (const N of R.items) {
                         let q = N.x,
                             V = N.y,

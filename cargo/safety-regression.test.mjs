@@ -111,3 +111,43 @@ test("expired deadline stops safely and preserves total requested quantity", () 
   assert.equal(result.placements.length, 0);
   assert.equal(result.unloaded.reduce((sum, item) => sum + item.remaining, 0), 3);
 });
+
+test("whole pallets preserve unloading groups even when a later group is taller", () => {
+  for (const priorityGroupMode of ["virtual-wall", "no-cross-stacking", "allow-stacking"]) {
+    const input = palletInput({}, { qty: 2, gap: 50 }, { l: 1100 });
+    input.priorityGroupMode = priorityGroupMode;
+    input.products = [
+      { ...input.products[0], sku: "first", q: 1, h: 100, group: 1 },
+      { ...input.products[0], sku: "second", q: 1, h: 200, group: 2 },
+    ];
+    const result = solveBaseline(input);
+    assert.deepEqual(result.loadedByProduct, [1, 1]);
+    assert.equal(result.palletPlacements.length, 2);
+    assert.deepEqual(result.placements.map(item => [item.priorityGroup, item.x]), [[1, 0], [2, 550]]);
+    assert.notEqual(result.placements[0].palletId, result.placements[1].palletId);
+  }
+});
+
+test("mixed-height pallet reports the tallest carton rather than the primary SKU layer height", () => {
+  const input = palletInput({}, { l: 1200, qty: 1, maxH: 254 }, { l: 1200 });
+  input.products = [
+    { ...input.products[0], sku: "main", q: 2, h: 100 },
+    { ...input.products[0], sku: "filler", l: 100, q: 1, h: 110 },
+  ];
+  const result = solveBaseline(input);
+  assert.deepEqual(result.loadedByProduct, [2, 1]);
+  assert.equal(result.palletPlacements[0].totalHeightMm, 254);
+  assert.equal(Math.max(...result.placements.map(item => item.z + item.orientation.heightMm)), 254);
+});
+
+test("an unpalletizable earlier group remains unloaded without blocking a feasible later group", () => {
+  const input = palletInput({}, { qty: 2, gap: 50 }, { l: 1100 });
+  input.products = [
+    { ...input.products[0], sku: "oversize", l: 600, q: 1, group: 1 },
+    { ...input.products[0], sku: "fits", q: 1, group: 2 },
+  ];
+  const result = solveBaseline(input);
+  assert.deepEqual(result.loadedByProduct, [0, 1]);
+  assert.equal(result.palletPlacements.length, 1);
+  assert.deepEqual(result.unloaded.map(item => [item.productIndex, item.remaining]), [[0, 1]]);
+});
