@@ -28,7 +28,7 @@ type CargoProduct = {
   group: number;
   stackable: boolean;
   maxLayers: number;
-  maxTopKg: number;
+  maxTopKg: number | null;
 };
 
 type ContainerDiagnostic = {
@@ -203,8 +203,8 @@ export function normalizeCargoSnapshot(value: unknown): CargoSnapshot {
               max: 99,
             }),
       maxTopKg:
-        product.maxTopKg === undefined
-          ? 100_000
+        product.maxTopKg === undefined || product.maxTopKg === null
+          ? null
           : finiteNumber(product.maxTopKg, `products[${index}].maxTopKg`, {
               min: 0,
               max: 100_000,
