@@ -176,6 +176,105 @@ describe("cargo snapshot normalization", () => {
       /containerQty/
     );
   });
+
+  it("preserves optional safety conditions, layout fingerprint, and search summary", () => {
+    const input = validSnapshot() as any;
+    input.containerSafety = {
+      doorWidthMm: 2300,
+      doorHeightMm: 2500,
+      maxFloorLoadKgM2: 1500,
+      maxLongitudinalOffsetMm: 0,
+      maxLateralOffsetMm: 250,
+    };
+    Object.assign(input.pallet, {
+      heightMm: 144,
+      emptyWeightKg: 25.5,
+      maxLoadKg: 1000,
+    });
+    input.result.layoutFingerprint = "ABCDEF01".repeat(8);
+    input.result.search = {
+      budgetMs: 120000,
+      elapsedMs: 120321.75,
+      attempts: 12,
+      validCandidates: 8,
+      rejectedCandidates: 4,
+      bestAttempt: 5,
+      strategy: "  maximal-space  ",
+      stopReason: "time-limit",
+    };
+    const normalized = normalizeCargoSnapshot(input);
+    expect(normalized.containerSafety).toEqual(input.containerSafety);
+    expect(normalized.pallet).toEqual(input.pallet);
+    expect(normalized.result?.layoutFingerprint).toBe("abcdef01".repeat(8));
+    expect(normalized.result?.search).toEqual({
+      ...input.result.search,
+      strategy: "maximal-space",
+    });
+    expect(normalized.resultHash).not.toBe(validSnapshot().resultHash);
+    expect(normalizeCargoSnapshot(normalized)).toEqual(normalized);
+  });
+
+  it("keeps explicit unknown nulls distinct from absent optional fields", () => {
+    const input = validSnapshot() as any;
+    input.containerSafety = { doorWidthMm: null, maxFloorLoadKgM2: null };
+    Object.assign(input.pallet, { emptyWeightKg: null, maxLoadKg: null });
+    input.products[0].maxTopKg = null;
+    const normalized = normalizeCargoSnapshot(input);
+    expect(normalized.containerSafety).toEqual({
+      doorWidthMm: null,
+      maxFloorLoadKgM2: null,
+    });
+    expect(normalized.containerSafety).not.toHaveProperty("doorHeightMm");
+    expect(normalized.pallet.emptyWeightKg).toBeNull();
+    expect(normalized.pallet.maxLoadKg).toBeNull();
+    expect(normalized.pallet).not.toHaveProperty("heightMm");
+    expect(normalized.products[0].maxTopKg).toBeNull();
+  });
+
+  it("rejects invalid new dimensions, loads, fingerprints, budgets, and search statuses", () => {
+    const invalidCases: [string, unknown][] = [
+      ["containerSafety", null],
+      ["containerSafety", []],
+      ["containerSafety.doorWidthMm", 0],
+      ["containerSafety.doorHeightMm", -1],
+      ["containerSafety.maxFloorLoadKgM2", 0],
+      ["containerSafety.maxLateralOffsetMm", -1],
+      ["containerSafety.maxLongitudinalOffsetMm", 50001],
+      ["pallet.heightMm", 0],
+      ["pallet.heightMm", 2001],
+      ["pallet.heightMm", null],
+      ["pallet.emptyWeightKg", -1],
+      ["pallet.maxLoadKg", 0],
+      ["result.layoutFingerprint", "abc"],
+      ["result.layoutFingerprint", "z".repeat(64)],
+      ["result.search", null],
+      ["result.search.budgetMs", 120001],
+      ["result.search.elapsedMs", 130001],
+      ["result.search.attempts", 1.5],
+      ["result.search.validCandidates", -1],
+      ["result.search.stopReason", "complete"],
+    ];
+    for (const [field, value] of invalidCases) {
+      const input = validSnapshot() as any;
+      const parts = field.split(".");
+      let target = input;
+      for (const key of parts.slice(0, -1)) target = target[key] ??= {};
+      target[parts.at(-1)!] = value;
+      expect(() => normalizeCargoSnapshot(input), field).toThrow(field);
+    }
+  });
+
+  it("does not inject new optional fields or change legacy serialization and result hash", () => {
+    const legacy = validSnapshot();
+    const normalized = normalizeCargoSnapshot(legacy);
+    expect(normalized.version).toBe(2);
+    expect(normalized.resultHash).toBe("dsSHcLf6rsqu");
+    expect(JSON.stringify(normalized)).toBe(JSON.stringify(legacy));
+    expect(normalized).not.toHaveProperty("containerSafety");
+    expect(normalized.pallet).not.toHaveProperty("heightMm");
+    expect(normalized.result).not.toHaveProperty("search");
+    expect(normalized.result).not.toHaveProperty("layoutFingerprint");
+  });
 });
 
 describe("CargoSnapshotStore", () => {
