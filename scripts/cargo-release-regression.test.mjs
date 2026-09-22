@@ -13,7 +13,7 @@ const sha = 'a'.repeat(40), previousSha = 'b'.repeat(40);
 const digest = data => createHash('sha256').update(data).digest('hex');
 
 async function fixture() {
-  const temporary = await mkdtemp(path.join(tmpdir(), 'openit-release-test-'));
+  const temporary = await mkdtemp(path.join(tmpdir(), 'cargo-release-test-'));
   const artifact = path.join(temporary, 'artifact');
   await mkdir(artifact);
   await cp(path.join(repository, 'cargo'), path.join(artifact, 'cargo'), { recursive: true });
