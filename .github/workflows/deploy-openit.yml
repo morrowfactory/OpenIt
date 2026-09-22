@@ -21,13 +21,16 @@ jobs:
     runs-on: ubuntu-latest
     environment: production-openit-cc
     timeout-minutes: 30
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      RUN_KEY: ${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - name: Validate release SHA input
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! "${{ inputs.release_sha }}" =~ ^[0-9a-f]{40}$ ]]; then
+          if [[ ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "release_sha must be a 40-character lowercase commit SHA" >&2
             exit 1
           fi
@@ -44,7 +47,7 @@ jobs:
           set -euo pipefail
           git fetch origin main
           current_main="$(git rev-parse origin/main)"
-          if [[ "$current_main" != "${{ inputs.release_sha }}" ]]; then
+          if [[ "$current_main" != "$RELEASE_SHA" ]]; then
             echo "Refusing deploy: release_sha is not current origin/main" >&2
             echo "origin/main=$current_main" >&2
             exit 1
@@ -72,6 +75,7 @@ jobs:
           set -euo pipefail
           pnpm check
           pnpm test:cargo
+          node --test scripts/cargo-release-regression.test.mjs
           pnpm build
           test -f dist/index.js
 
@@ -85,10 +89,13 @@ jobs:
           cp package.json pnpm-lock.yaml pnpm-workspace.yaml ecosystem.config.cjs README.md LICENSE DEPLOYMENT.md release/
           if [[ -d patches ]]; then cp -a patches release/; fi
           if [[ -d cargo ]]; then cp -a cargo release/; fi
-          tar -C release -czf "openit-${{ inputs.release_sha }}.tar.gz" .
-          sha256sum "openit-${{ inputs.release_sha }}.tar.gz" > "openit-${{ inputs.release_sha }}.tar.gz.sha256"
+          node scripts/cargo-release-check.mjs manifest release "$RELEASE_SHA"
+          node scripts/cargo-release-check.mjs verify-local release "$RELEASE_SHA"
+          tar -C release -czf "openit-$RELEASE_SHA-$RUN_KEY.tar.gz" .
+          sha256sum "openit-$RELEASE_SHA-$RUN_KEY.tar.gz" > "openit-$RELEASE_SHA-$RUN_KEY.tar.gz.sha256"
 
       - name: Prepare SSH
+        id: ssh
         shell: bash
         env:
           OPENIT_DEPLOY_SSH_KEY: ${{ secrets.OPENIT_DEPLOY_SSH_KEY }}
@@ -110,73 +117,84 @@ jobs:
         run: |
           set -euo pipefail
           scp -i ~/.ssh/openit_deploy -P "$OPENIT_DEPLOY_PORT" \
-            "openit-${{ inputs.release_sha }}.tar.gz" \
-            "openit-${{ inputs.release_sha }}.tar.gz.sha256" \
+            "openit-$RELEASE_SHA-$RUN_KEY.tar.gz" \
+            "openit-$RELEASE_SHA-$RUN_KEY.tar.gz.sha256" \
             "$OPENIT_DEPLOY_USER@$OPENIT_DEPLOY_HOST:/tmp/"
 
-      - name: Install release and restart
+      - name: Recheck current main before installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+
+      - name: Back up and atomically exchange code units
+        id: install
         shell: bash
         env:
           OPENIT_DEPLOY_HOST: ${{ secrets.OPENIT_DEPLOY_HOST }}
           OPENIT_DEPLOY_PORT: ${{ secrets.OPENIT_DEPLOY_PORT }}
           OPENIT_DEPLOY_USER: ${{ secrets.OPENIT_DEPLOY_USER }}
           OPENIT_WEB_ROOT: ${{ secrets.OPENIT_WEB_ROOT }}
-          RELEASE_SHA: ${{ inputs.release_sha }}
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/openit_deploy -p "$OPENIT_DEPLOY_PORT" "$OPENIT_DEPLOY_USER@$OPENIT_DEPLOY_HOST" \
-            "OPENIT_WEB_ROOT='$OPENIT_WEB_ROOT' RELEASE_SHA='$RELEASE_SHA' bash -s" <<'REMOTE'
-          set -euo pipefail
-          if [[ "$OPENIT_WEB_ROOT" != "/www/wwwroot/openit.cc" ]]; then
-            echo "Unexpected OPENIT_WEB_ROOT: $OPENIT_WEB_ROOT" >&2
-            exit 1
-          fi
+          test "$OPENIT_WEB_ROOT" = /www/wwwroot/openit.cc
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            -i ~/.ssh/openit_deploy -p "$OPENIT_DEPLOY_PORT" "$OPENIT_DEPLOY_USER@$OPENIT_DEPLOY_HOST" \
+            "bash -s -- apply '$RELEASE_SHA' '$RUN_KEY'" < scripts/cargo-release-install.sh
 
-          NODE_DIR="/www/server/nodejs/v24.18.0/bin"
-          PM2="$NODE_DIR/pm2"
-          RELEASE_BASE="/www/deploy/openit/releases"
-          BACKUP_BASE="/www/backup/openit/releases"
-          PACKAGE="/tmp/openit-${RELEASE_SHA}.tar.gz"
-          CHECKSUM="/tmp/openit-${RELEASE_SHA}.tar.gz.sha256"
-          RELEASE_DIR="$RELEASE_BASE/$RELEASE_SHA"
-
-          test -f "$PACKAGE"
-          test -f "$CHECKSUM"
-          cd /tmp
-          sha256sum -c "$(basename "$CHECKSUM")"
-
-          mkdir -p "$RELEASE_DIR" "$BACKUP_BASE"
-          tar -xzf "$PACKAGE" -C "$RELEASE_DIR"
-          test -f "$RELEASE_DIR/dist/index.js"
-          test -f "$RELEASE_DIR/package.json"
-
-          if [[ -d "$OPENIT_WEB_ROOT/dist" ]]; then
-            tar -C "$OPENIT_WEB_ROOT" -czf "$BACKUP_BASE/openit-${RELEASE_SHA}-before.tar.gz" \
-              dist package.json pnpm-lock.yaml pnpm-workspace.yaml ecosystem.config.cjs scripts cargo 2>/dev/null || true
-          fi
-
-          mkdir -p "$OPENIT_WEB_ROOT"
-          cp -a "$RELEASE_DIR"/. "$OPENIT_WEB_ROOT"/
-          cd "$OPENIT_WEB_ROOT"
-          PATH="$NODE_DIR:$PATH" corepack enable
-          PATH="$NODE_DIR:$PATH" corepack prepare pnpm@10.4.1 --activate
-          PATH="$NODE_DIR:$PATH" pnpm install --prod --frozen-lockfile
-          PATH="$NODE_DIR:$PATH" "$PM2" restart openit --update-env
-          PATH="$NODE_DIR:$PATH" "$PM2" save
-          printf '%s\n' "$RELEASE_SHA" > "$OPENIT_WEB_ROOT/.deploy-sha"
-          for attempt in {1..20}; do
-            if curl -fsS http://127.0.0.1:3000/healthz; then
-              exit 0
-            fi
-            sleep 2
-          done
-          PATH="$NODE_DIR:$PATH" "$PM2" logs openit --lines 80 --nostream
-          exit 1
-          REMOTE
-
-      - name: Verify production
+      - name: Verify public HTTPS artifacts and Cargo behavior
+        id: acceptance
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS https://www.openit.cc/healthz | grep '"service":"openit"'
-          curl -fsS https://www.openit.cc/cargo/ | grep '返回主页'
+          node scripts/cargo-release-check.mjs verify-public release "$RELEASE_SHA" https://openit.cc | tee cargo-acceptance-apex.json
+          node scripts/cargo-release-check.mjs verify-public release "$RELEASE_SHA" https://www.openit.cc | tee cargo-acceptance-www.json
+
+      - name: Record accepted release SHA
+        id: finalize
+        shell: bash
+        env:
+          OPENIT_DEPLOY_HOST: ${{ secrets.OPENIT_DEPLOY_HOST }}
+          OPENIT_DEPLOY_PORT: ${{ secrets.OPENIT_DEPLOY_PORT }}
+          OPENIT_DEPLOY_USER: ${{ secrets.OPENIT_DEPLOY_USER }}
+          OPENIT_WEB_ROOT: ${{ secrets.OPENIT_WEB_ROOT }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+          test "$OPENIT_WEB_ROOT" = /www/wwwroot/openit.cc
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            -i ~/.ssh/openit_deploy -p "$OPENIT_DEPLOY_PORT" "$OPENIT_DEPLOY_USER@$OPENIT_DEPLOY_HOST" \
+            "bash -s -- finalize '$RELEASE_SHA' '$RUN_KEY'" < scripts/cargo-release-install.sh
+
+      - name: Restore previous code after installation or acceptance failure
+        if: ${{ always() && (steps.install.outcome == 'success' || steps.install.outcome == 'failure' || steps.install.outcome == 'cancelled') && steps.finalize.outcome != 'success' }}
+        shell: bash
+        env:
+          OPENIT_DEPLOY_HOST: ${{ secrets.OPENIT_DEPLOY_HOST }}
+          OPENIT_DEPLOY_PORT: ${{ secrets.OPENIT_DEPLOY_PORT }}
+          OPENIT_DEPLOY_USER: ${{ secrets.OPENIT_DEPLOY_USER }}
+          OPENIT_WEB_ROOT: ${{ secrets.OPENIT_WEB_ROOT }}
+        run: |
+          set -euo pipefail
+          test "$OPENIT_WEB_ROOT" = /www/wwwroot/openit.cc
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            -i ~/.ssh/openit_deploy -p "$OPENIT_DEPLOY_PORT" "$OPENIT_DEPLOY_USER@$OPENIT_DEPLOY_HOST" \
+            "bash -s -- rollback '$RELEASE_SHA' '$RUN_KEY'" < scripts/cargo-release-install.sh
+
+      - name: Inventory retained release artifacts without deletion
+        if: ${{ always() && steps.ssh.outcome == 'success' && steps.install.outcome != 'skipped' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          OPENIT_DEPLOY_HOST: ${{ secrets.OPENIT_DEPLOY_HOST }}
+          OPENIT_DEPLOY_PORT: ${{ secrets.OPENIT_DEPLOY_PORT }}
+          OPENIT_DEPLOY_USER: ${{ secrets.OPENIT_DEPLOY_USER }}
+          OPENIT_WEB_ROOT: ${{ secrets.OPENIT_WEB_ROOT }}
+        run: |
+          set -euo pipefail
+          test "$OPENIT_WEB_ROOT" = /www/wwwroot/openit.cc
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            -i ~/.ssh/openit_deploy -p "$OPENIT_DEPLOY_PORT" "$OPENIT_DEPLOY_USER@$OPENIT_DEPLOY_HOST" \
+            "bash -s -- inventory '$RELEASE_SHA' '$RUN_KEY'" < scripts/cargo-release-install.sh

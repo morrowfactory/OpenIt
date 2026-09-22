@@ -58,3 +58,32 @@ test('layout fingerprint detects placement changes even when loaded counts match
   result.sceneItems[0].originMm.x += 1;
   assert.notEqual(await fingerprintLayout(result), result.layoutFingerprint);
 });
+
+test('known operating limits reject unsafe candidates without calling the order impossible', async () => {
+  const result = await solvePlan({ ...input, container: { ...input.container, maxFloorLoadKgM2: 1 } }, { maxAttempts: 2 });
+  assert.equal(result.loadedByProduct[0], 0);
+  assert.equal(result.audit.valid, true);
+  assert.equal(result.search.strategy, 'empty-after-rejection');
+  assert.ok(result.warnings.some(warning => warning.includes('地板载荷超过')));
+});
+
+test('accepted plans expose executable per-container steps and optional door diagnostics', async () => {
+  const result = await solvePlan(input, { maxAttempts: 0 });
+  assert.equal(result.operations.valid, true);
+  assert.equal(result.loadingSteps.length, 2);
+  assert.deepEqual(result.loadingSteps.map(step => step.sequence), [1, 2]);
+  assert.equal(result.operations.doorChecked, false);
+});
+
+test('known floor-load limit tries spreading cartons before discarding a stack-heavy baseline', async () => {
+  const config = { ...input, products: [{ ...input.products[0], q: 2 }],
+    container: { ...input.container, h: 200, maxFloorLoadKgM2: 150 } };
+  const result = await solvePlan(config, { maxAttempts: 1 });
+  assert.deepEqual(result.loadedByProduct, [2]);
+  assert.equal(result.audit.valid, true);
+  assert.ok(result.placements.every(box => box.z === 0));
+  assert.equal(result.operations.containerDiagnostics[0].peakFloorLoadKgM2, 100);
+  assert.equal(result.metrics.containersUsed, 1);
+  assert.equal(result.search.rejectedCandidates, 1);
+  assert.match(result.search.strategy, /floor-first$/);
+});
