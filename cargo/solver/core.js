@@ -606,8 +606,7 @@ class Rl {
             _ = [],
             u = [],
             supportedItems = [],
-            h = new Map,
-            w = new Map;
+            h = new Map;
         let T = 0,
             E = 0,
             P = 0,
@@ -726,7 +725,7 @@ class Rl {
                     z: $.box.z,
                     orientation: $.cand.orientation,
                     layerIndex: P
-                }), h.set(ut, (h.get(ut) ?? 0) + 1), w.has(ut) || w.set(ut, P), E += 1
+                }), h.set($.cand.pendingIndex, (h.get($.cand.pendingIndex) ?? 0) + 1), E += 1
             }
             R += st, P += 1
         }
@@ -757,14 +756,11 @@ class Rl {
             palletLengthMm: s.lengthMm,
             palletWidthMm: s.widthMm,
             palletHeightMm: s.heightMm,
-            skuSummary: [...h.entries()].map(([O, N]) => {
-                const q = _.find(V => V.sku === O).productIndex;
-                return {
-                    sku: O,
-                    productIndex: q,
-                    quantity: N
-                }
-            }),
+            skuSummary: [...h.entries()].map(([productIndex, quantity]) => ({
+                sku: t.products[productIndex].sku,
+                productIndex,
+                quantity
+            })),
             items: _,
             priorityGroup,
             totalHeightMm: c + contentHeightMm,
@@ -1052,7 +1048,7 @@ class Ul {
         for (const _ of l)
             if (_.unit !== null)
                 for (const u of _.unit.skuSummary) {
-                    const h = f.find(w => w.sku === u.sku);
+                    const h = f.find(w => w.productIndex === u.productIndex);
                     h ? h.remaining += u.quantity : f.push({
                         sku: u.sku,
                         productIndex: u.productIndex,

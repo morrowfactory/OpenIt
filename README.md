@@ -91,6 +91,8 @@ The safety baseline checks permitted orientations, complete support, mixed-produ
 
 Reproducible short links retain the input conditions and result summary. Old links without product top-load data now restore that field as unknown. Changes to safety rules can intentionally reduce loaded counts in previously unsafe plans.
 
+`cargo/solver/validation.js` independently recomputes the result instead of trusting solver claims. Invalid geometry, quantities, support or known load limits cannot become an executable result. Cross-section gaps (including height steps) are measured separately and flagged for securing review. A heuristic failure is reported as an unresolved search, not proof of physical impossibility. Passing geometry checks is not transport-safety certification.
+
 ## Deployment
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the production process, PM2 naming, and historical aliases.

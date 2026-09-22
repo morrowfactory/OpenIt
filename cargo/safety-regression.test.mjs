@@ -151,3 +151,21 @@ test("an unpalletizable earlier group remains unloaded without blocking a feasib
   assert.equal(result.palletPlacements.length, 1);
   assert.deepEqual(result.unloaded.map(item => [item.productIndex, item.remaining]), [[0, 1]]);
 });
+
+test("duplicate SKU labels preserve each product row in pallet summaries and unloaded totals", () => {
+  for (const containerLength of [100, 500]) {
+    const input = palletInput({ sku: "same", h: 100, q: 1 }, { maxH: 244, qty: 4, gap: 50 }, { l: containerLength });
+    input.products.push({ ...input.products[0], q: 2 });
+    const result = solveBaseline(input);
+    assert.deepEqual(result.loadedByProduct, containerLength === 100 ? [0, 0] : [1, 0]);
+    for (let index = 0; index < 2; index++) {
+      const remaining = result.unloaded.filter(item => item.productIndex === index).reduce((sum, item) => sum + item.remaining, 0);
+      assert.equal(result.loadedByProduct[index] + remaining, input.products[index].q);
+    }
+  }
+  const mixed = palletInput({ sku: "same", h: 100, q: 2 }, { l: 1200, maxH: 244, qty: 1 }, { l: 100 });
+  mixed.products.push({ ...mixed.products[0], l: 100, q: 1 });
+  const result = solveBaseline(mixed);
+  assert.deepEqual(result.loadedByProduct, [0, 0]);
+  assert.deepEqual(result.unloaded.map(item => [item.productIndex, item.remaining]), [[0, 2], [1, 1]]);
+});
