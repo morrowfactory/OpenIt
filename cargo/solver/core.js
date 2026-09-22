@@ -95,6 +95,16 @@ function Po(i) {
     }
     return t
 }
+function fitsDoor(widthMm, heightMm, container) {
+    return (!Number.isFinite(container.doorWidthMm) || widthMm <= container.doorWidthMm + 1e-6) &&
+        (!Number.isFinite(container.doorHeightMm) || heightMm <= container.doorHeightMm + 1e-6);
+}
+
+// Transport through the door may use another permitted orientation. Turning
+// inside the container is reported separately by the operations audit.
+function canPassDoor(product, container) {
+    return Po(product).some(orientation => fitsDoor(orientation.widthMm, orientation.heightMm, container));
+}
 const Vt = 1e-6;
 
 function Nn(i, t, e, n, s, r) {
@@ -183,6 +193,7 @@ class yl {
             }
             of s) {
             if (stopped(controls) || l.every(E => E.quantity <= 0)) break;
+            const doorEligible = t.products.map(product => canPassDoor(product, u));
             const h = {
                 spaces: [Nn(0, 0, 0, u.innerLengthMm, u.innerWidthMm, u.innerHeightMm)],
                 placed: [],
@@ -200,7 +211,7 @@ class yl {
                     let I = !1;
                     for (let M = 0; M < l.length; M += 1) {
                         const S = l[M];
-                        if (S.quantity <= 0) continue;
+                        if (S.quantity <= 0 || !doorEligible[S.productIndex]) continue;
                         const A = n.get(S.productIndex) ?? [];
                         for (const G of A)
                             if (G.lengthMm <= b.length + Vt && G.widthMm <= b.width + Vt && G.heightMm <= b.height + Vt) {
@@ -211,7 +222,7 @@ class yl {
                     if (I)
                         for (let M = 0; M < l.length; M += 1) {
                             const S = l[M];
-                            if (S.quantity <= 0) continue;
+                            if (S.quantity <= 0 || !doorEligible[S.productIndex]) continue;
                             const A = t.products[S.productIndex],
                                 G = n.get(S.productIndex) ?? [];
                             for (const O of G) {
@@ -313,7 +324,12 @@ class yl {
                     w = h.some(T => s.some(E => T.lengthMm <= E.type.innerLengthMm + Vt && T.widthMm <= E.type.innerWidthMm + Vt && T.heightMm <= E.type.innerHeightMm + Vt));
                 let T = "CAPACITY_OR_CONSTRAINT_LIMIT",
                     E = "柜内剩余空间或当前安全约束无法继续放置";
-                return h.length === 0 ? (T = "NO_ALLOWED_ORIENTATION", E = "没有符合旋转、侧装或直立要求的允许朝向") : w ? s.every(P => u.weightG > P.type.maxPayloadG) ? (T = "WEIGHT_LIMIT", E = "单箱重量超过所选柜型载重") : (u.stackable === !1 || Number.isFinite(u.maxStackLayers) || Number.isFinite(u.maxTopLoadG)) && (T = "STACK_OR_SUPPORT_LIMIT", E = "堆叠层数、顶部承重或支撑条件限制") : (T = "DIMENSION_LIMIT", E = "所有允许朝向都超过所选柜型内部尺寸"), {
+                if (!h.length) { T = "NO_ALLOWED_ORIENTATION"; E = "没有符合旋转、侧装或直立要求的允许朝向"; }
+                else if (!w) { T = "DIMENSION_LIMIT"; E = "所有允许朝向都超过所选柜型内部尺寸"; }
+                else if (s.every(P => !canPassDoor(u, P.type))) { T = "DOOR_LIMIT"; E = "所有允许运输朝向都无法通过已填写的柜门尺寸"; }
+                else if (s.every(P => u.weightG > P.type.maxPayloadG)) { T = "WEIGHT_LIMIT"; E = "单箱重量超过所选柜型载重"; }
+                else if (u.stackable === !1 || Number.isFinite(u.maxStackLayers) || Number.isFinite(u.maxTopLoadG)) { T = "STACK_OR_SUPPORT_LIMIT"; E = "堆叠层数、顶部承重或支撑条件限制"; }
+                return {
                     sku: _.sku,
                     productIndex: _.productIndex,
                     remaining: _.quantity,
@@ -597,7 +613,8 @@ class Rl {
     }
     buildPalletUnit(t, e, n, s, r, a, o, controls = {}, priorityGroup = 1) {
         const c = s.heightMm,
-            l = s.maxLoadedHeightMm,
+            l = Math.min(s.maxLoadedHeightMm, Math.max(...t.containerTypes.filter(type => type.quantity > 0).map(type =>
+                Number.isFinite(type.doorHeightMm) ? type.doorHeightMm : Infinity))),
             d = s.maxLoadG,
             f = s.lengthMm,
             p = s.widthMm,
@@ -947,6 +964,7 @@ class Ul {
                             rotated: !0
                         });
                         for (const G of A) {
+                            if (!fitsDoor(G.width, G.height, u)) continue;
                             if (G.rotated && M.items.some(item => !Po(e.products[item.productIndex]).some(orientation => orientation.lengthMm === item.orientation.widthMm && orientation.widthMm === item.orientation.lengthMm && orientation.heightMm === item.orientation.heightMm))) continue;
                             const gap = e.palletTypes[M.palletTypeIndex]?.minimumGapMm ?? 0,
                                 O = Math.min(G.length + gap, R.length),
@@ -1271,6 +1289,7 @@ export {
     bl as solveLooseCargo,
     va as toBrowserResult,
     Po as allowedOrientations,
+    canPassDoor,
     Nn as makeBox,
     vl as boxesOverlap,
     supportRatio,

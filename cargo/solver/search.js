@@ -1,5 +1,5 @@
 import {
-  allowedOrientations, applyTopLoad, boxesOverlap, computeContainerDiagnostics,
+  allowedOrientations, applyTopLoad, boxesOverlap, canPassDoor, computeContainerDiagnostics,
   computeLooseGapStats, directSupportItems, makeBox, normalizeInput, solveBaseline,
   supportRatio, toBrowserResult, validateStackSafety,
 } from "./core.js";
@@ -98,9 +98,11 @@ function strategyFor(attempt, products, input) {
   const orientationScore = orientationScores[attempt % 4];
   const orientations = products.map(product => allowedOrientations(product).sort((a, b) =>
     lexicographic(orientationScore(a), orientationScore(b))));
+  const floorFirst = Number.isFinite(input.container.maxFloorLoadKgM2) && attempt % 4 === 0;
   return { ranks, orientations, enforceGap: attempt >= 20,
+    floorFirst,
     balance: input.optimizationGoal === "weight-balance" && attempt >= 4,
-    name: `maximal-space-${attempt + 1}` };
+    name: `maximal-space-${attempt + 1}${floorFirst ? '-floor-first' : ''}` };
 }
 
 function yzOverlap(a, b) {
@@ -153,6 +155,7 @@ function* construct(input, plan, strategy, controls) {
   let stopReason = "complete", checks = 0;
   outer: for (const { containerIndex, type } of containers) {
     let spaces = [makeBox(0, 0, 0, type.innerLengthMm, type.innerWidthMm, type.innerHeightMm)];
+    const doorEligible = plan.products.map(product => canPassDoor(product, type));
     const placed = [];
     let usedWeight = 0, activeGroup = 1;
     while (remaining.some(quantity => quantity > 0)) {
@@ -162,6 +165,7 @@ function* construct(input, plan, strategy, controls) {
       for (const space of spaces) {
         for (let index = 0; index < remaining.length; index++) {
           if (!remaining[index]) continue;
+          if (!doorEligible[index]) { reject(index, "DOOR_LIMIT"); continue; }
           const product = plan.products[index], group = product.priorityGroup ?? 1;
           if (group < activeGroup) continue;
           if (usedWeight + product.weightG > type.maxPayloadG + EPS) { reject(index, "PAYLOAD_LIMIT"); continue; }
@@ -169,12 +173,11 @@ function* construct(input, plan, strategy, controls) {
             if (++checks % 128 === 0 && controls.stopped()) { stopReason = "deadline-or-cancel"; break outer; }
             const orientation = strategy.orientations[index][oi];
             if (orientation.lengthMm > space.length + EPS || orientation.widthMm > space.width + EPS || orientation.heightMm > space.height + EPS) continue;
-            if ((Number.isFinite(type.doorWidthMm) && orientation.widthMm > type.doorWidthMm + EPS) ||
-                (Number.isFinite(type.doorHeightMm) && orientation.heightMm > type.doorHeightMm + EPS)) { reject(index, "DOOR_LIMIT"); continue; }
             const balance = strategy.balance ? product.weightG / orientation.lengthMm * (
               Math.abs(space.x + orientation.lengthMm / 2 - type.innerLengthMm / 2) / type.innerLengthMm +
               Math.abs(space.y + orientation.widthMm / 2 - type.innerWidthMm / 2) / type.innerWidthMm) : 0;
-            const score = [group, space.x, space.z, space.y, balance, strategy.ranks[index], oi];
+            const position = strategy.floorFirst ? [space.z, space.x, space.y] : [space.x, space.z, space.y];
+            const score = [group, ...position, balance, strategy.ranks[index], oi];
             if (best && lexicographic(score, best.score) >= 0) continue;
             const box = makeBox(space.x, space.y, space.z, orientation.lengthMm, orientation.widthMm, orientation.heightMm);
             if (strategy.enforceGap && createsGap(box, placed, plan.looseCargoMaxGapMm)) { reject(index, "INTERNAL_GAP_LIMIT"); continue; }

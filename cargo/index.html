@@ -51,7 +51,7 @@
 <div class="workspace">
 <section class="stack">
 <div class="card"><div class="cardhead"><div><h2>产品清单</h2><div class="sub">尺寸单位 mm，重量单位 kg；装卸组 1 最先装入、最后卸出</div></div><button class="ghost" id="addProduct">＋ 添加产品</button></div><div class="tablewrap"><table class="products"><thead><tr><th>产品</th><th>长</th><th>宽</th><th>高</th><th>数量</th><th>单重</th><th title="允许水平旋转">旋转</th><th title="允许侧面装载">侧装</th><th>装卸组</th><th title="允许堆叠">堆叠</th><th title="最大堆叠层数">层数</th><th title="顶部承重 kg">顶载 kg</th><th></th></tr></thead><tbody id="productBody"></tbody></table></div></div>
-<div class="card"><div class="cardhead"><div><h2>装载条件</h2><div class="sub">选择柜型，并设置本次计算的边界条件</div></div></div><div class="settings"><div class="field"><label>集装箱柜型</label><select id="container"><option value="20GP">20GP · 5898 × 2352 × 2393</option><option value="40GP">40GP · 12032 × 2352 × 2393</option><option value="40HQ" selected>40HQ · 12032 × 2352 × 2698</option></select></div><div class="field"><label>集装箱数量</label><input id="containerQty" type="number" value="1" min="1" max="20"></div><div class="field"><label>散箱允许最大空隙</label><input value="50 mm（5 cm）" readonly aria-label="散箱允许最大空隙 50 毫米"></div><div class="field"><label>优先组分隔策略</label><select id="priorityGroupMode"><option value="virtual-wall" selected>虚拟墙 · 严格前后分区</option><option value="no-cross-stacking">禁止跨组叠放</option><option value="allow-stacking">允许后组叠在前组上方</option></select></div><div id="palletFields" class="full hidden"><div class="dims"><div class="field"><label>托盘长</label><input id="palletL" type="number" value="1200"></div><div class="field"><label>托盘宽</label><input id="palletW" type="number" value="1000"></div><div class="field"><label>含托最大高度</label><input id="palletH" type="number" value="1800"></div><div class="field"><label>托盘数量</label><input id="palletQty" type="number" value="20"></div><div class="field"><label>卡板最小净间距</label><input id="palletGap" type="number" value="50" min="50" step="10"></div><div class="field"><label>托盘码放模式</label><select id="palletPackingMode"><option value="single-sku">同样货物放同样托盘</option><option value="mixed-max" selected>不同货物混装 · 最大利用率</option></select></div><div class="field"><label>托盘散货</label><select id="allowLooseCargo"><option value="true" selected>允许托盘上放散货</option><option value="false">不允许托盘上放散货</option></select></div></div></div><div class="field"><label>优化目标</label><select id="optimizationGoal"><option value="complete-order">优先装完订单</option><option value="volume">优先体积利用率</option><option value="weight-balance">优先重量均衡</option></select></div><div class="field"><label>模拟计算时限</label><select id="simulationTimeLimit"><option value="fast">快速 · 5 秒</option><option value="balanced" selected>平衡 · 30 秒</option><option value="deep">深度 · 2 分钟</option></select></div><div class="notice"><strong>默认安全规则：</strong>目标箱间隙为 0，50 mm 仅为无法消除时的上限；先把柜内最深处的一段由下到上装紧，再逐段向柜门推进。装卸组 1 最先装入、最后卸出；同时校验朝向、完整支撑、不可堆叠、最大层数、顶部承重、柜体载重、重心与多柜分配。</div></div><div class="actions"><button class="primary" id="solve">生成装柜方案</button><small id="shareStatus">计算完成后自动生成短测试网址</small></div></div>
+<div class="card"><div class="cardhead"><div><h2>装载条件</h2><div class="sub">选择柜型，并设置本次计算的边界条件</div></div></div><div class="settings"><div class="field"><label>集装箱柜型</label><select id="container"><option value="20GP">20GP · 5898 × 2352 × 2393</option><option value="40GP">40GP · 12032 × 2352 × 2393</option><option value="40HQ" selected>40HQ · 12032 × 2352 × 2698</option></select></div><div class="field"><label>集装箱数量</label><input id="containerQty" type="number" value="1" min="1" max="20"></div><div class="field"><label>散箱允许最大空隙</label><input value="50 mm（5 cm）" readonly aria-label="散箱允许最大空隙 50 毫米"></div><div class="field"><label>优先组分隔策略</label><select id="priorityGroupMode"><option value="virtual-wall" selected>虚拟墙 · 严格前后分区</option><option value="no-cross-stacking">禁止跨组叠放</option><option value="allow-stacking">允许后组叠在前组上方</option></select></div><div id="palletFields" class="full hidden"><div class="dims"><div class="field"><label>托盘长</label><input id="palletL" type="number" value="1200"></div><div class="field"><label>托盘宽</label><input id="palletW" type="number" value="1000"></div><div class="field"><label>含托最大高度</label><input id="palletH" type="number" value="1800"></div><div class="field"><label>托盘数量</label><input id="palletQty" type="number" value="20"></div><div class="field"><label for="palletThickness">托盘底板厚度（mm）</label><input id="palletThickness" type="number" value="144" min="1" max="2000" placeholder="未填写，未校验"></div><div class="field"><label for="palletEmptyKg">托盘自重（kg）</label><input id="palletEmptyKg" type="number" value="" min="0" max="100000" placeholder="未填写，未校验"></div><div class="field"><label for="palletMaxLoadKg">托盘额定载重（kg）</label><input id="palletMaxLoadKg" type="number" value="" min="1" max="100000" placeholder="未填写，未校验"></div><div class="field"><label>卡板最小净间距</label><input id="palletGap" type="number" value="50" min="50" step="10"></div><div class="field"><label>托盘码放模式</label><select id="palletPackingMode"><option value="single-sku">同样货物放同样托盘</option><option value="mixed-max" selected>不同货物混装 · 最大利用率</option></select></div><div class="field"><label>托盘散货</label><select id="allowLooseCargo"><option value="true" selected>允许托盘上放散货</option><option value="false">不允许托盘上放散货</option></select></div></div></div><div class="field"><label>优化目标</label><select id="optimizationGoal"><option value="complete-order">优先装完订单</option><option value="volume">优先体积利用率</option><option value="weight-balance">优先重量均衡</option></select></div><div class="field"><label>模拟计算时限</label><select id="simulationTimeLimit"><option value="fast">快速 · 5 秒</option><option value="balanced" selected>平衡 · 30 秒</option><option value="deep">深度 · 2 分钟</option></select></div><details class="full" id="operationalFields"><summary>实际柜门、地板与重心限制（选填）</summary><div class="settings"><div class="field"><label for="doorWidthMm">柜门净宽（mm）</label><input id="doorWidthMm" type="number" value="" min="1" max="50000" placeholder="未填写，未校验"></div><div class="field"><label for="doorHeightMm">柜门净高（mm）</label><input id="doorHeightMm" type="number" value="" min="1" max="50000" placeholder="未填写，未校验"></div><div class="field"><label for="maxFloorLoadKgM2">地板承载限值（kg/m²）</label><input id="maxFloorLoadKgM2" type="number" value="" min="1" max="100000" placeholder="未填写，未校验"></div><div class="field"><label for="maxLongitudinalOffsetMm">纵向重心偏移上限（mm）</label><input id="maxLongitudinalOffsetMm" type="number" value="" min="0" max="50000" placeholder="未填写，未校验"></div><div class="field"><label for="maxLateralOffsetMm">横向重心偏移上限（mm）</label><input id="maxLateralOffsetMm" type="number" value="" min="0" max="50000" placeholder="未填写，未校验"></div><div class="sub full">限值应取实际柜体和运输要求；未填写的项目不会标为已校验。地板载荷按底层外轮廓面积估算，不代替托盘脚、轮子的局部承载校核。</div></div></details><div class="notice"><strong>默认安全规则：</strong>目标箱间隙为 0，50 mm 仅为无法消除时的上限；先把柜内最深处的一段由下到上装紧，再逐段向柜门推进。装卸组 1 最先装入、最后卸出；同时校验朝向、完整支撑、不可堆叠、最大层数、顶部承重、柜体载重、重心与多柜分配。</div></div><div class="actions"><button class="primary" id="solve">生成装柜方案</button><small id="shareStatus">计算完成后自动生成短测试网址</small></div></div>
 </section>
 <div class="workspace-splitter" id="workspaceSplitter" role="separator" aria-orientation="vertical" aria-label="调整产品与方案预览宽度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="52" tabindex="0" title="拖动调整宽度；双击恢复默认比例"></div>
 <section class="stack">
@@ -87,6 +87,24 @@ renderProducts();body.addEventListener('change',e=>{let i=+e.target.dataset.i,k=
 document.getElementById('addProduct').onclick=()=>{let n=products.length+1;products.push({name:`新产品 ${n}`,sku:`SKU-${1000+n}`,l:500,w:400,h:300,q:100,kg:10,rotate:true,side:false,color:colors[products.length%colors.length],...defaultSafety});renderProducts()};
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-mode]').forEach(x=>x.classList.remove('active'));b.classList.add('active');mode=b.dataset.mode;document.getElementById('palletFields').classList.toggle('hidden',mode!=='pallet')});
 const capacities={"20GP":{v:33.2,kg:28200,l:5898,w:2352,h:2393},"40GP":{v:67.7,kg:26700,l:12032,w:2352,h:2393},"40HQ":{v:76.3,kg:26500,l:12032,w:2352,h:2698}};
+const operationalFieldIds=['doorWidthMm','doorHeightMm','maxFloorLoadKgM2','maxLongitudinalOffsetMm','maxLateralOffsetMm'];
+function optionalLimit(id,min=0,max=50000){
+  const field=document.getElementById(id);
+  if(field.value.trim()==='')return null;
+  const value=Number(field.value);
+  if(!Number.isFinite(value)||value<min||value>max)throw new Error((field.labels?.[0]?.textContent||'限制')+'超出允许范围。');
+  return value;
+}
+function containerSafetyFromForm(){
+  const limits=Object.fromEntries(operationalFieldIds.map(id=>[id,optionalLimit(id,id.endsWith('OffsetMm')?0:1,id==='maxFloorLoadKgM2'?100000:50000)]));
+  if((limits.doorWidthMm===null)!==(limits.doorHeightMm===null))throw new Error('请同时填写柜门净宽和净高，或将两项留空。');
+  return limits;
+}
+function palletSafetyFromForm(){
+  const heightMm=optionalLimit('palletThickness',1,2000);
+  if(heightMm===null)throw new Error('请填写托盘底板厚度。');
+  return {heightMm,emptyWeightKg:optionalLimit('palletEmptyKg',0,100000),maxLoadKg:optionalLimit('palletMaxLoadKg',1,100000)};
+}
 function validateInputs(type){let invalid=products.find(p=>![p.l,p.w,p.h,p.q].every(Number.isInteger)||![p.l,p.w,p.h,p.q,p.kg].every(v=>v>0));if(invalid)return `${invalid.sku} 的长、宽、高、数量必须为正整数，单重必须大于 0。`;let invalidSafety=products.find(p=>!Number.isInteger(p.group)||p.group<1||p.group>99||!Number.isInteger(p.maxLayers)||p.maxLayers<1||p.maxLayers>99||(p.maxTopKg!==null&&(!Number.isFinite(p.maxTopKg)||p.maxTopKg<0||p.maxTopKg>100000)));if(invalidSafety)return `${invalidSafety.sku} 的装卸组、最大层数或顶部承重不合法。`;let cq=+document.getElementById('containerQty').value;if(!Number.isInteger(cq)||cq<1||cq>20)return '集装箱数量必须是 1–20 的整数。';if(mode==='pallet'){let values=['palletL','palletW','palletH','palletQty','palletGap'].map(id=>+document.getElementById(id).value);if(!values.every(Number.isInteger)||values.some(v=>v<=0))return '托盘尺寸、数量和净间距必须为正整数。';if(values[2]>capacities[type].h)return `含托最大高度不能超过 ${type} 柜内高度 ${capacities[type].h} mm。`;if(values[4]<50)return '卡板最小净间距不能小于 50 mm。'}return ''}
 function cargoInputFromForm(){
   const type=document.getElementById('container').value,cap=capacities[type];
@@ -98,10 +116,10 @@ function cargoInputFromForm(){
     looseCargoMaxGapMm:gap,
     optimizationGoal:document.getElementById('optimizationGoal').value,
     simulationTimeLimit:document.getElementById('simulationTimeLimit').value,
-    container:{id:type,code:type,l:cap.l,w:cap.w,h:cap.h,kg:cap.kg,quantity:+document.getElementById('containerQty').value},
+    container:{id:type,code:type,l:cap.l,w:cap.w,h:cap.h,kg:cap.kg,...containerSafetyFromForm(),quantity:+document.getElementById('containerQty').value},
     pallet:mode==='pallet'?{
       l:+document.getElementById('palletL').value,w:+document.getElementById('palletW').value,
-      heightMm:144,maxH:+document.getElementById('palletH').value,
+      ...palletSafetyFromForm(),maxH:+document.getElementById('palletH').value,
       qty:+document.getElementById('palletQty').value,gap:+document.getElementById('palletGap').value,
       packingMode:document.getElementById('palletPackingMode').value,
       allowLooseCargo:document.getElementById('allowLooseCargo').value==='true'
@@ -115,9 +133,10 @@ function acceptCargoResult(input,solverResult){
   const unloadedByProduct=new Map((solverResult.unloaded||[]).map(item=>[item.productIndex,item]));
   const rows=input.products.map((p,i)=>({...p,loaded:solverResult.loadedByProduct[i]||0,left:p.q-(solverResult.loadedByProduct[i]||0),unloadedReason:unloadedByProduct.get(i)?.reason||''}));
   const loaded=rows.reduce((s,p)=>s+p.loaded,0),all=rows.reduce((s,p)=>s+p.q,0);
-  window.latestCargoAudit={solverVersion:solverResult.solverVersion,...(solverResult.layoutFingerprint?{layoutFingerprint:solverResult.layoutFingerprint}:{}),...(solverResult.search?{search:{...solverResult.search}}:{}),loadedByProduct:[...solverResult.loadedByProduct],warnings:[...(solverResult.warnings||[])],metrics:{volumeRatio:solverResult.metrics.volumeRatio,weightRatio:solverResult.metrics.weightRatio,containersUsed:solverResult.metrics.containersUsed,maxInternalGapMm:solverResult.metrics.maxInternalGapMm||0,minimumSupportRatio:solverResult.metrics.minimumSupportRatio??0,containerDiagnostics:solverResult.metrics.containerDiagnostics||[]}};
-  window.latestCargoResult=solverResult;
+  window.latestCargoAudit={solverVersion:solverResult.solverVersion,...(solverResult.layoutFingerprint?{layoutFingerprint:solverResult.layoutFingerprint}:{}),...(solverResult.search?{search:{...solverResult.search}}:{}),loadedByProduct:[...solverResult.loadedByProduct],warnings:[...(solverResult.warnings||[])],metrics:{volumeRatio:solverResult.metrics.volumeRatio,weightRatio:solverResult.metrics.weightRatio,containersUsed:solverResult.metrics.containersUsed,maxInternalGapMm:solverResult.metrics.maxInternalGapMm||0,minimumSupportRatio:solverResult.metrics.minimumSupportRatio??0,containerDiagnostics:(solverResult.metrics.containerDiagnostics||[]).map(({containerIndex,loadedWeightG,longitudinalCenterOffsetMm,lateralCenterOffsetMm,continuousDoorFreeMm,occupiedLengthMm})=>({containerIndex,loadedWeightG,longitudinalCenterOffsetMm,lateralCenterOffsetMm,continuousDoorFreeMm,occupiedLengthMm}))}};
+  window.latestCargoResult=solverResult;window.latestCargoInput=input;
   renderResult(rows,loaded,all,solverResult.metrics.volumeRatio*100,solverResult.metrics.weightRatio*100,cq,type,plan,solverResult);
+  showLoadingSteps(input,solverResult);
 }
 let activeCargoRun=null,cargoRunGeneration=0;
 const cancelSolve=document.createElement('button');
@@ -175,7 +194,7 @@ async function solve(){
     for(const id of ['loadedMetric','volumeMetric','weightMetric','containerMetric'])document.getElementById(id).textContent='—';
     for(const id of ['renderStatus','dimensionNote'])document.getElementById(id).classList.add('hidden');
     document.getElementById('planDiagnostics').textContent='本次未生成有效方案，请调整条件后重算。';
-    document.getElementById('resultList').textContent='';
+    document.getElementById('resultList').textContent='';stepPanel.classList.add('hidden');
     warning.classList.remove('hidden');warning.textContent='计算未完成：'+(error.message||String(error));
     solveProgress.textContent=error.name==='AbortError'?'已取消':'计算失败';
   }finally{
@@ -186,8 +205,48 @@ async function solve(){
   }
 }
 document.getElementById('solve').onclick=solve;
-function renderResult(rows,loaded,all,vRate,wRate,cq,type,plan,solverResult){let cap=capacities[type],usedContainers=solverResult.metrics.containersUsed,diagnostics=solverResult.metrics.containerDiagnostics||[];document.getElementById('loadedMetric').textContent=`${loaded} / ${all}`;document.getElementById('volumeMetric').innerHTML=`${vRate.toFixed(1)}% <em>独立校验</em>`;document.getElementById('weightMetric').textContent=`${wRate.toFixed(1)}%`;document.getElementById('containerMetric').textContent=`${usedContainers} / ${cq} × ${type}`;document.getElementById('resultSub').textContent=mode==='pallet'?`几何校验通过 · ${solverResult.palletsUsed} 托 · ${solverResult.solverVersion}`:`几何校验通过 · ${solverResult.solverVersion}`;document.getElementById('empty').classList.add('hidden');document.getElementById('scene').classList.remove('hidden');let renderInfo=window.cargoViewer.render({container:cap,containerCount:Math.max(1,usedContainers),plan,products:rows,sceneItems:solverResult.sceneItems});let status=document.getElementById('renderStatus');status.classList.remove('hidden');status.textContent=`已渲染 ${plan.placements.length} / 已装 ${loaded} 箱${solverResult.palletsUsed?` · ${solverResult.palletsUsed} 托`:''}`;let primary=diagnostics[0]||{},occupiedLength=primary.occupiedLengthMm??Math.max(0,...plan.placements.filter(p=>p.ci===0).map(p=>p.x+p.l)),doorFree=primary.continuousDoorFreeMm??Math.max(0,cap.l-occupiedLength),note=document.getElementById('dimensionNote');note.classList.remove('hidden');note.textContent=`柜 1 已占用 ${Math.round(occupiedLength)} mm · 门口连续空余 ${Math.round(doorFree)} mm`;let support=`<span class="diagnostic-chip"><strong>最小支撑</strong> · ${((solverResult.metrics.minimumSupportRatio??0)*100).toFixed(1)}%</span>`;document.getElementById('planDiagnostics').innerHTML='<span class="diagnostic-chip">几何校验通过 · 非运输安全认证</span>'+support+(diagnostics.length?diagnostics.map(d=>`<span class="diagnostic-chip"><strong>柜 ${d.containerIndex+1}</strong> · 门口 ${Math.round(d.continuousDoorFreeMm)} mm · 纵向重心 ${Math.round(d.longitudinalCenterOffsetMm)} mm · 横向 ${Math.round(d.lateralCenterOffsetMm)} mm</span>`).join(''):'<span class="diagnostic-chip">暂无每柜诊断</span>');document.getElementById('legend').innerHTML=rows.map(p=>`<span><i class="dot" style="background:${p.color}"></i>${escapeHtml(p.sku)} · 组 ${p.group} · ${p.loaded} 箱</span>`).join('')+`<span class="count-note">左键旋转 · 滚轮缩放 · 右键平移 · 点击固定信息</span>`;document.getElementById('resultList').innerHTML='<div class="resultrow head"><span>产品</span><span>已装</span><span>剩余</span><span>状态</span></div>'+rows.map(p=>`<div class="resultrow"><span><b>${escapeHtml(p.name)}</b><small style="display:block;color:var(--muted)">${escapeHtml(p.sku)} · 组 ${p.group}</small>${p.left&&p.unloadedReason?`<small class="reason">${escapeHtml(p.unloadedReason)}</small>`:''}</span><span>${p.loaded}</span><span>${p.left}</span><span><i class="badge">${p.left?'部分装载':'已装完'}</i></span></div>`).join('');let left=all-loaded,w=document.getElementById('warning'),messages=[...(solverResult.warnings||[])];if(left&&!messages.length)messages.push(`有 ${left} 箱未装入。请增加柜数或调整尺寸、朝向和装载条件。`);w.classList.toggle('hidden',messages.length===0);w.textContent=messages.join(' ')}
-document.getElementById('exportBtn').onclick=()=>alert('原型提示：正式版本将在这里导出 Excel / PDF 装柜清单。');
+function operationalSummary(d){return '柜门'+(d.doorChecked?'尺寸已检':'未检')+' · 地板'+(d.floorLoadStatus==='footprint-estimate'?Math.round(d.peakFloorLoadKgM2)+' kg/m²（估算）':'未检')+' · 重心限值'+(d.longitudinalCenterChecked&&d.lateralCenterChecked?'已检':'未完整提供')}
+function renderResult(rows,loaded,all,vRate,wRate,cq,type,plan,solverResult){let cap=capacities[type],usedContainers=solverResult.metrics.containersUsed,diagnostics=solverResult.metrics.containerDiagnostics||[];document.getElementById('loadedMetric').textContent=`${loaded} / ${all}`;document.getElementById('volumeMetric').innerHTML=`${vRate.toFixed(1)}% <em>独立校验</em>`;document.getElementById('weightMetric').textContent=`${wRate.toFixed(1)}%`;document.getElementById('containerMetric').textContent=`${usedContainers} / ${cq} × ${type}`;document.getElementById('resultSub').textContent=!loaded?`空方案 · 未找到可装入的有效方案 · ${solverResult.solverVersion}`:mode==='pallet'?`几何校验通过 · ${solverResult.palletsUsed} 托 · ${solverResult.solverVersion}`:`几何校验通过 · ${solverResult.solverVersion}`;document.getElementById('empty').classList.add('hidden');document.getElementById('scene').classList.remove('hidden');let renderInfo=window.cargoViewer.render({container:cap,containerCount:Math.max(1,usedContainers),plan,products:rows,sceneItems:solverResult.sceneItems});let status=document.getElementById('renderStatus');status.classList.remove('hidden');status.textContent=`已渲染 ${plan.placements.length} / 已装 ${loaded} 箱${solverResult.palletsUsed?` · ${solverResult.palletsUsed} 托`:''}`;let primary=diagnostics[0]||{},occupiedLength=primary.occupiedLengthMm??Math.max(0,...plan.placements.filter(p=>p.ci===0).map(p=>p.x+p.l)),doorFree=primary.continuousDoorFreeMm??Math.max(0,cap.l-occupiedLength),note=document.getElementById('dimensionNote');note.classList.remove('hidden');note.textContent=`柜 1 已占用 ${Math.round(occupiedLength)} mm · 门口连续空余 ${Math.round(doorFree)} mm`;let support=`<span class="diagnostic-chip"><strong>最小支撑</strong> · ${loaded?((solverResult.metrics.minimumSupportRatio??0)*100).toFixed(1)+'%':'无已装货物'}</span>`;document.getElementById('planDiagnostics').innerHTML='<span class="diagnostic-chip">几何校验通过 · 非运输安全认证</span>'+support+(diagnostics.length?diagnostics.map(d=>`<span class="diagnostic-chip"><strong>柜 ${d.containerIndex+1}</strong> · 门口 ${Math.round(d.continuousDoorFreeMm)} mm · 纵向重心 ${Math.round(d.longitudinalCenterOffsetMm)} mm · 横向 ${Math.round(d.lateralCenterOffsetMm)} mm · ${operationalSummary(d)}</span>`).join(''):'<span class="diagnostic-chip">暂无每柜诊断</span>');document.getElementById('legend').innerHTML=rows.map(p=>`<span><i class="dot" style="background:${p.color}"></i>${escapeHtml(p.sku)} · 组 ${p.group} · ${p.loaded} 箱</span>`).join('')+`<span class="count-note">左键旋转 · 滚轮缩放 · 右键平移 · 点击固定信息</span>`;document.getElementById('resultList').innerHTML='<div class="resultrow head"><span>产品</span><span>已装</span><span>剩余</span><span>状态</span></div>'+rows.map(p=>`<div class="resultrow"><span><b>${escapeHtml(p.name)}</b><small style="display:block;color:var(--muted)">${escapeHtml(p.sku)} · 组 ${p.group}</small>${p.left&&p.unloadedReason?`<small class="reason">${escapeHtml(p.unloadedReason)}</small>`:''}</span><span>${p.loaded}</span><span>${p.left}</span><span><i class="badge">${p.left?(p.loaded?'部分装载':'未装入'):'已装完'}</i></span></div>`).join('');let left=all-loaded,w=document.getElementById('warning'),messages=[...(solverResult.warnings||[])];if(left&&!messages.length)messages.push(`有 ${left} 箱未装入。请增加柜数或调整尺寸、朝向和装载条件。`);w.classList.toggle('hidden',messages.length===0);w.textContent=messages.join(' ')}
+const stepPanel=document.createElement('div');
+stepPanel.id='loadingSteps';stepPanel.className='notice hidden';stepPanel.style.margin='12px 16px';
+document.getElementById('legend').after(stepPanel);
+async function showLoadingSteps(input,result){
+  const {sceneAtLoadingStep}=await import('./solver/export.js?v=20260922-5');
+  if(window.latestCargoResult!==result)return;
+  const steps=result.loadingSteps||[];
+  stepPanel.classList.toggle('hidden',steps.length===0);
+  if(!steps.length)return;
+  const containers=[...new Set(steps.map(step=>step.containerIndex))];
+  stepPanel.innerHTML='<strong>装载步骤</strong> <select id="stepContainer" aria-label="选择装载步骤货柜">'+containers.map(ci=>'<option value="'+ci+'">柜 '+(ci+1)+'</option>').join('')+'</select> <button class="ghost" id="showFullPlan">显示完整方案</button><div id="stepDescription" style="margin:8px 0"></div><input id="stepRange" type="range" min="0" style="width:100%" aria-label="已装入步骤数"><div class="sub">按每柜步骤装入，卸货按逆序。托盘按整托移动；叉车、绑扎、转向空间仍需现场复核。</div>';
+  const select=document.getElementById('stepContainer'),range=document.getElementById('stepRange'),description=document.getElementById('stepDescription');
+  function update(render){
+    const ci=Number(select.value),list=steps.filter(step=>step.containerIndex===ci),n=Number(range.value);
+    range.max=String(list.length);
+    const step=list[n-1];
+    description.textContent=step?'第 '+n+' / '+list.length+' 步 · '+(step.kind==='pallet'?'整托 '+step.cartonCount+' 箱':input.products[step.productIndex].sku)+' · 坐标 ('+step.x+', '+step.y+', '+step.z+') mm':'尚未装入此柜';
+    if(!render)return;
+    const shown=list.slice(0,n),sceneItems=sceneAtLoadingStep(result,ci,n);
+    window.cargoViewer.render({container:input.container,containerCount:Math.max(1,result.metrics.containersUsed),products:input.products,plan:{placements:[],pallets:[]},sceneItems});
+    document.getElementById('renderStatus').textContent='步骤演示 · 柜 '+(ci+1)+' 已装入 '+shown.reduce((sum,step)=>sum+step.cartonCount,0)+' 箱 / 本柜 '+list.reduce((sum,step)=>sum+step.cartonCount,0)+' 箱';
+  }
+  function selectContainer(){range.max=String(steps.filter(step=>step.containerIndex===Number(select.value)).length);range.value=range.max;update(false)}
+  select.onchange=()=>{selectContainer();update(true)};
+  range.oninput=()=>update(true);
+  document.getElementById('showFullPlan').onclick=()=>{
+    range.value=range.max;update(false);
+    window.cargoViewer.render({container:input.container,containerCount:Math.max(1,result.metrics.containersUsed),products:input.products,plan:{placements:[],pallets:[]},sceneItems:result.sceneItems});
+    document.getElementById('renderStatus').textContent='已渲染 '+result.placements.length+' / 已装 '+result.placements.length+' 箱'+(result.palletsUsed?' · '+result.palletsUsed+' 托':'');
+  };
+  selectContainer();
+}
+document.getElementById('exportBtn').textContent='导出装载步骤';
+document.getElementById('exportBtn').onclick=async()=>{
+  if(!window.latestCargoResult?.audit?.valid)return alert('请先计算通过校验的装柜方案。');
+  const {loadingStepsCsv}=await import('./solver/export.js?v=20260922-5');
+  const url=URL.createObjectURL(new Blob([loadingStepsCsv(window.latestCargoInput,window.latestCargoResult)],{type:'text/csv;charset=utf-8'}));
+  const link=document.createElement('a');link.href=url;link.download='cargo-loading-steps.csv';link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
 </script>
 <script>
 // Turn the displayed loose-cargo gap into a real solver input.
@@ -210,11 +269,13 @@ function cargoSnapshotFromForm(){
     products:products.map(({name,sku,l,w,h,q,kg,rotate,side,color,group,stackable,maxLayers,maxTopKg})=>({name,sku,l,w,h,q,kg,rotate,side,color,group,stackable,maxLayers,maxTopKg})),
     containerType:document.getElementById('container').value,
     containerQty:+document.getElementById('containerQty').value,
+    containerSafety:containerSafetyFromForm(),
     looseCargoMaxGapMm:+document.getElementById('looseCargoMaxGap').value,
     priorityGroupMode:document.getElementById('priorityGroupMode').value,
     optimizationGoal:document.getElementById('optimizationGoal').value,
     simulationTimeLimit:document.getElementById('simulationTimeLimit').value,
     pallet:{
+      ...palletSafetyFromForm(),
       l:+document.getElementById('palletL').value,
       w:+document.getElementById('palletW').value,
       h:+document.getElementById('palletH').value,
@@ -289,6 +350,10 @@ function applyCargoSnapshot(snapshot){
   document.getElementById('palletGap').value=snapshot.pallet.gap;
   document.getElementById('palletPackingMode').value=snapshot.pallet.packingMode;
   document.getElementById('allowLooseCargo').value=String(snapshot.pallet.allowLooseCargo);
+  operationalFieldIds.forEach(id=>document.getElementById(id).value=snapshot.containerSafety?.[id]??'');
+  document.getElementById('palletThickness').value=snapshot.pallet.heightMm??144;
+  document.getElementById('palletEmptyKg').value=snapshot.pallet.emptyWeightKg??'';
+  document.getElementById('palletMaxLoadKg').value=snapshot.pallet.maxLoadKg??'';
   updateSearchModeHint();
 }
 function compareRestoredCargoAudit(){

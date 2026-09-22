@@ -12,7 +12,7 @@ test('all inline planner scripts parse', () => {
 });
 
 test('browser separates pallet deck thickness from loaded height', () => {
-  assert.match(html, /heightMm:144,maxH:/);
+  assert.match(html, /\.\.\.palletSafetyFromForm\(\),maxH:/);
   const builder = html.slice(html.indexOf('function cargoInputFromForm'), html.indexOf('function acceptCargoResult'));
   assert.doesNotMatch(builder, /h:\+document\.getElementById\('palletH'\)/);
 });

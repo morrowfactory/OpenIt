@@ -4,11 +4,15 @@ on:
   pull_request:
     paths:
       - 'cargo/**'
+      - 'scripts/cargo-release*'
+      - '.github/workflows/deploy-openit.yml'
       - '.github/workflows/cargo-ci.yml'
   push:
     branches: [main]
     paths:
       - 'cargo/**'
+      - 'scripts/cargo-release*'
+      - '.github/workflows/deploy-openit.yml'
       - '.github/workflows/cargo-ci.yml'
 
 permissions:
@@ -24,3 +28,4 @@ jobs:
         with:
           node-version: '24'
       - run: node --test cargo/*regression.test.mjs
+      - run: node --test scripts/cargo-release-regression.test.mjs

@@ -97,6 +97,10 @@ Reproducible short links retain the input conditions and result summary. Old lin
 
 Calculations run in a module Web Worker with real 5-second, 30-second or 2-minute upper budgets. Cancellation and the watchdog retain only an independently validated best result. Inputs are locked during a run and the short link saves that run's captured configuration, search summary and SHA-256 layout fingerprint. Replaying the same conditions on a different device or solver version may stop at a different candidate; the page compares layouts instead of claiming equivalence from carton counts alone.
 
+`operations.js` separately checks supplied door dimensions, floor-load estimates and center-of-gravity limits. Unknown limits remain explicitly unverified. Floor loads use contact-area weight transfer and the bottom unit's outer footprint, not actual pallet feet or vehicle axle loads. A carton that needs turning to pass the door is flagged for manual turning-space review. Known violations reject the candidate; if no candidate survives, an explicitly empty result is returned instead of presenting an unsafe plan as successful.
+
+Accepted plans provide per-container loading steps from support, depth and unloading-group dependencies. The step slider and CSV export use the same sequence; pallets move as whole units. Unloading follows the reverse sequence. Forklift clearance, turning paths, dynamic stability and lashing still require on-site verification. Optional door, floor, center-of-gravity and pallet specification fields are retained by short links; no snapshot migration is required.
+
 ## Deployment
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the production process, PM2 naming, and historical aliases.
