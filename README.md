@@ -79,8 +79,17 @@ pnpm start
 - `pnpm start` runs the production server from `dist/index.js`.
 - `pnpm check` runs TypeScript type checking.
 - `pnpm test` runs the Vitest test suite.
+- `pnpm test:cargo` runs the Cargo solver, safety, rendering, and layout regression tests.
 - `pnpm format` formats the repository with Prettier.
 - `pnpm db:push` generates and applies Drizzle migrations.
+
+## Cargo loading planner
+
+`cargo/index.html` provides the planner at `/cargo/`. The packing algorithm is maintained in readable modules under `cargo/solver/`; the existing asset bundle provides the Three.js viewer. Both are deployed by the OpenIt GitHub workflow.
+
+The safety baseline checks permitted orientations, complete support, mixed-product stack layers, accumulated top loads, pallet quantity, total height including the pallet, pallet spacing and container payload. An empty top-load field means **unknown**, not an assumed load capacity. The load-transfer model distributes weight by contact area; it does not certify packaging strength, vehicle dynamics or lashing.
+
+Reproducible short links retain the input conditions and result summary. Old links without product top-load data now restore that field as unknown. Changes to safety rules can intentionally reduce loaded counts in previously unsafe plans.
 
 ## Deployment
 

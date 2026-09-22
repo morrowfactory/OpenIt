@@ -71,6 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           pnpm check
+          pnpm test:cargo
           pnpm build
           test -f dist/index.js
 

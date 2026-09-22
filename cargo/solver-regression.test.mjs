@@ -1,21 +1,9 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import test from "node:test";
-import vm from "node:vm";
+import { solveLooseCargo } from "./solver/core.js";
 
 function loadLooseCargoSolver() {
-  const bundle = fs.readFileSync(
-    new URL("./assets/index-D5jndoPs.js", import.meta.url),
-    "utf8"
-  );
-  const solverSource = bundle.slice(
-    bundle.indexOf("const gl ="),
-    bundle.indexOf("const se =")
-  );
-  const context = {};
-  vm.createContext(context);
-  vm.runInContext(`${solverSource};globalThis.solveLooseCargo=bl`, context);
-  return context.solveLooseCargo;
+  return solveLooseCargo;
 }
 
 const container = {

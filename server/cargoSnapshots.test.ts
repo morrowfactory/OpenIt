@@ -159,7 +159,7 @@ describe("cargo snapshot normalization", () => {
       group: 1,
       stackable: true,
       maxLayers: 99,
-      maxTopKg: 100_000,
+      maxTopKg: null,
     });
     expect(normalized.result).toBeNull();
     expect(normalized.resultHash).toBeNull();
