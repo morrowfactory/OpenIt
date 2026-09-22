@@ -21,7 +21,7 @@ PACKAGE="/tmp/openit-$RELEASE_SHA-$RUN_KEY.tar.gz"
 CHECKSUM="$PACKAGE.sha256"
 PM2="$NODE_DIR/pm2"
 export PATH="$NODE_DIR:$PATH"
-MANAGED=(dist scripts cargo patches package.json pnpm-lock.yaml pnpm-workspace.yaml ecosystem.config.cjs README.md LICENSE DEPLOYMENT.md)
+MANAGED=(dist scripts cargo package.json pnpm-lock.yaml pnpm-workspace.yaml ecosystem.config.cjs README.md LICENSE DEPLOYMENT.md)
 [[ -d "$WEB_ROOT" && "$(realpath "$WEB_ROOT")" == "$WEB_ROOT" ]] || { echo 'Unexpected production root' >&2; exit 2; }
 
 validate_archive() {
@@ -82,6 +82,24 @@ check_exchange_support() {
   echo 'Same-filesystem atomic directory exchange probe passed.'
 }
 
+check_expected_patches() {
+  local expected="$RELEASE_DIR/patches" live="$WEB_ROOT/patches" item relative
+  [[ -e "$expected" || -L "$expected" ]] || return 0
+  [[ -d "$expected" && ! -L "$expected" && -d "$live" && ! -L "$live" ]] || { echo 'Expected patches directory is missing or irregular.' >&2; return 1; }
+  find "$expected" -mindepth 1 -print0 > "$BACKUP_DIR/expected-patches.list" || return
+  while IFS= read -r -d '' item; do
+    relative="${item#"$expected/"}"
+    [[ ! -L "$item" && ! -L "$live/$relative" ]] || { echo "Expected patch path is a symlink: $relative" >&2; return 1; }
+    if [[ -d "$item" ]]; then
+      [[ -d "$live/$relative" ]] || { echo "Expected patch directory missing: $relative" >&2; return 1; }
+    else
+      [[ -f "$item" && -f "$live/$relative" ]] || { echo "Expected patch is missing or irregular: $relative" >&2; return 1; }
+      cmp -s -- "$item" "$live/$relative" || { echo "Expected patch differs: $relative" >&2; return 1; }
+    fi
+  done < "$BACKUP_DIR/expected-patches.list"
+  # Historical live-only patches are preserved, not installed, swapped or removed.
+}
+
 rollback() {
   [[ -f "$BACKUP_DIR/install-started" ]] || { echo 'No production exchange started; nothing to restore.'; return 0; }
   if [[ -f "$BACKUP_DIR/restored" ]]; then check_health || return; echo 'This run was already restored.'; return 0; fi
@@ -94,7 +112,7 @@ rollback() {
   # that completed from a process interrupted immediately before its syscall.
   tac "$BACKUP_DIR/exchanges.log" > "$BACKUP_DIR/rollback-order.log" || return
   while IFS='|' read -r entry operation old_inode new_inode; do
-    case "$entry" in dist|scripts|cargo|patches|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|ecosystem.config.cjs|README.md|LICENSE|DEPLOYMENT.md) ;; *) return 1 ;; esac
+    case "$entry" in dist|scripts|cargo|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|ecosystem.config.cjs|README.md|LICENSE|DEPLOYMENT.md) ;; *) return 1 ;; esac
     [[ ! -L "$WEB_ROOT/$entry" && ! -L "$RELEASE_DIR/$entry" ]] || return 1
     live_inode='-'; staged_inode='-'
     [[ ! -e "$WEB_ROOT/$entry" ]] || live_inode="$(inode "$WEB_ROOT/$entry")"
@@ -150,7 +168,7 @@ apply_release() {
   test -d "$WEB_ROOT/node_modules"
   cmp "$WEB_ROOT/pnpm-lock.yaml" "$RELEASE_DIR/pnpm-lock.yaml"
   cmp "$WEB_ROOT/pnpm-workspace.yaml" "$RELEASE_DIR/pnpm-workspace.yaml"
-  if [[ -d "$WEB_ROOT/patches" || -d "$RELEASE_DIR/patches" ]]; then diff -qr "$WEB_ROOT/patches" "$RELEASE_DIR/patches"; fi
+  check_expected_patches
   "$NODE_DIR/node" --input-type=module - "$WEB_ROOT/package.json" "$RELEASE_DIR/package.json" <<'NODE'
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -85,10 +85,13 @@ test('Linux atomic exchange, partial failure and public-acceptance rollback pres
       await mkdir(path.dirname(path.join(web, name)), { recursive: true });
       await writeFile(path.join(web, name), name === 'dist/index.js' ? '// previous application\n' : body);
     }
-    for (const directory of ['cargo', 'scripts', 'node_modules', 'data', 'uploads', 'logs']) await mkdir(path.join(web, directory), { recursive: true });
+    for (const directory of ['cargo', 'scripts', 'patches', 'node_modules', 'data', 'uploads', 'logs']) await mkdir(path.join(web, directory), { recursive: true });
+    await mkdir(path.join(artifact, 'patches'));
+    await writeFile(path.join(artifact, 'patches/expected.patch'), 'preserve patches/expected.patch');
     await writeFile(path.join(web, 'cargo/index.html'), 'previous entry');
     await writeFile(path.join(web, 'cargo/obsolete.js'), 'old code stays in rollback point');
-    const protectedFiles = ['.env', 'data/snapshot.json', 'uploads/file.txt', 'logs/application.log', 'node_modules/sentinel'];
+    const protectedFiles = ['.env', 'data/snapshot.json', 'uploads/file.txt', 'logs/application.log', 'node_modules/sentinel',
+      'patches/expected.patch', 'patches/legacy.patch'];
     for (const name of protectedFiles) await writeFile(path.join(web, name), `preserve ${name}`);
     await writeFile(path.join(web, '.deploy-sha'), previousSha + '\n');
     const failureFlag = path.join(temporary, 'fail-restart');
@@ -116,8 +119,27 @@ test('Linux atomic exchange, partial failure and public-acceptance rollback pres
     const checkProtected = async () => { for (const name of protectedFiles) assert.equal(await readFile(path.join(web, name), 'utf8'), `preserve ${name}`); };
     const success = result => assert.equal(result.status, 0, result.stdout + result.stderr);
 
+    await packageFor('99-1');
+    await writeFile(path.join(web, 'patches/expected.patch'), 'changed expected patch');
+    const mismatchedPatch = run('apply', '99-1');
+    assert.notEqual(mismatchedPatch.status, 0);
+    assert.match(mismatchedPatch.stderr, /Expected patch differs/);
+    assert.equal(await readFile(path.join(web, 'cargo/index.html'), 'utf8'), 'previous entry');
+    await assert.rejects(readFile(path.join(backups, `${sha}-99-1`, 'install-started')), { code: 'ENOENT' });
+    await rm(path.join(web, 'patches/expected.patch'));
+    await symlink(path.join(web, 'patches/legacy.patch'), path.join(web, 'patches/expected.patch'));
+    await packageFor('99-2');
+    const symlinkPatch = run('apply', '99-2');
+    assert.notEqual(symlinkPatch.status, 0);
+    assert.match(symlinkPatch.stderr, /Expected patch path is a symlink/);
+    await assert.rejects(readFile(path.join(backups, `${sha}-99-2`, 'install-started')), { code: 'ENOENT' });
+    await rm(path.join(web, 'patches/expected.patch'));
+    await writeFile(path.join(web, 'patches/expected.patch'), 'preserve patches/expected.patch');
+    await checkProtected();
+
     await packageFor('100-1');
     success(run('apply', '100-1'));
+    await checkProtected();
     assert.notEqual(await readFile(path.join(web, 'cargo/index.html'), 'utf8'), 'previous entry');
     assert.equal(await readFile(path.join(web, '.deploy-sha'), 'utf8'), previousSha + '\n', 'Install must not accept its own release');
     const checksum = path.join(backups, `${sha}-100-1`, 'backup.tar.gz.sha256');
