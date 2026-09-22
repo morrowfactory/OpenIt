@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessPlan, explainUnloaded, solvePlan } from './solver/engine.js';
+import { assessPlan, explainUnloaded, fingerprintLayout, solvePlan } from './solver/engine.js';
 
 const input = { mode: 'loose', container: { l: 200, w: 100, h: 100, kg: 100, quantity: 1 },
   products: [{ sku: 'A', l: 100, w: 100, h: 100, kg: 1, q: 3, rotate: true, side: false, stackable: true, group: 1 }],
@@ -49,4 +49,12 @@ test('cancelling integrated search retains a validated candidate', async () => {
   assert.equal(result.audit.valid, true);
   assert.equal(result.search.stopReason, 'cancelled');
   assert.equal(result.search.attempts, 0);
+});
+
+test('layout fingerprint detects placement changes even when loaded counts match', async () => {
+  const result = await solvePlan(input, { maxAttempts: 0 });
+  assert.match(result.layoutFingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(await fingerprintLayout(result), result.layoutFingerprint);
+  result.sceneItems[0].originMm.x += 1;
+  assert.notEqual(await fingerprintLayout(result), result.layoutFingerprint);
 });

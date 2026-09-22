@@ -115,33 +115,75 @@ function acceptCargoResult(input,solverResult){
   const unloadedByProduct=new Map((solverResult.unloaded||[]).map(item=>[item.productIndex,item]));
   const rows=input.products.map((p,i)=>({...p,loaded:solverResult.loadedByProduct[i]||0,left:p.q-(solverResult.loadedByProduct[i]||0),unloadedReason:unloadedByProduct.get(i)?.reason||''}));
   const loaded=rows.reduce((s,p)=>s+p.loaded,0),all=rows.reduce((s,p)=>s+p.q,0);
-  window.latestCargoAudit={solverVersion:solverResult.solverVersion,loadedByProduct:[...solverResult.loadedByProduct],warnings:[...(solverResult.warnings||[])],metrics:{volumeRatio:solverResult.metrics.volumeRatio,weightRatio:solverResult.metrics.weightRatio,containersUsed:solverResult.metrics.containersUsed,maxInternalGapMm:solverResult.metrics.maxInternalGapMm||0,minimumSupportRatio:solverResult.metrics.minimumSupportRatio??0,containerDiagnostics:solverResult.metrics.containerDiagnostics||[]}};
+  window.latestCargoAudit={solverVersion:solverResult.solverVersion,...(solverResult.layoutFingerprint?{layoutFingerprint:solverResult.layoutFingerprint}:{}),...(solverResult.search?{search:{...solverResult.search}}:{}),loadedByProduct:[...solverResult.loadedByProduct],warnings:[...(solverResult.warnings||[])],metrics:{volumeRatio:solverResult.metrics.volumeRatio,weightRatio:solverResult.metrics.weightRatio,containersUsed:solverResult.metrics.containersUsed,maxInternalGapMm:solverResult.metrics.maxInternalGapMm||0,minimumSupportRatio:solverResult.metrics.minimumSupportRatio??0,containerDiagnostics:solverResult.metrics.containerDiagnostics||[]}};
   window.latestCargoResult=solverResult;
   renderResult(rows,loaded,all,solverResult.metrics.volumeRatio*100,solverResult.metrics.weightRatio*100,cq,type,plan,solverResult);
 }
+let activeCargoRun=null,cargoRunGeneration=0;
+const cancelSolve=document.createElement('button');
+cancelSolve.id='cancelSolve';cancelSolve.className='ghost hidden';cancelSolve.type='button';cancelSolve.textContent='停止并保留最好方案';
+document.getElementById('solve').after(cancelSolve);
+const solveProgress=document.createElement('small');
+solveProgress.id='solveProgress';solveProgress.setAttribute('role','status');solveProgress.setAttribute('aria-live','polite');
+cancelSolve.after(solveProgress);
+cancelSolve.onclick=()=>{activeCargoRun?.cancel();cancelSolve.disabled=true;solveProgress.textContent='正在保留已校验方案…'};
+function updateSearchModeHint(){
+  document.getElementById('optimizationGoal').disabled=mode==='pallet';
+  document.getElementById('optimizationGoal').title=mode==='pallet'?'托盘模式当前使用安全基线，尚不支持多策略目标优化':'';
+}
+document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',updateSearchModeHint));
 async function solve(){
   syncProductsFromForm();
   if(!products.length)return;
   const error=validateInputs(document.getElementById('container').value);
   if(error){alert(error);return}
-  const btn=document.getElementById('solve');
-  btn.disabled=true;btn.innerHTML='<span class="loading"></span>正在计算装柜方案';
+  const generation=++cargoRunGeneration,btn=document.getElementById('solve');
+  activeCargoRun?.cancel();
+  const locked=[...document.querySelectorAll('.stack:first-child input,.stack:first-child select,.stack:first-child button,[data-mode],#exportBtn')].filter(element=>element!==cancelSolve).map(element=>[element,element.disabled]);
+  locked.forEach(([element])=>element.disabled=true);
+  cancelSolve.classList.remove('hidden');cancelSolve.disabled=false;
+  btn.innerHTML='<span class="loading"></span>后台计算中';
+  solveProgress.textContent='正在建立可行方案…';
+  document.getElementById('resultSub').textContent='正在计算；旧图仅供参考';
+  const restoring=window.restoringCargoSnapshot;
+  window.restoringCargoSnapshot=false;
   try{
-    const input=cargoInputFromForm();
-    const {solvePlan}=await import('./solver/engine.js?v=20260922-2');
-    const result=await solvePlan(input);
+    const input=cargoInputFromForm(),snapshot=cargoSnapshotFromForm();
+    snapshot.result=null;
+    const {runCargoPlan}=await import('./solver/client.js?v=20260922-4');
+    if(generation!==cargoRunGeneration)return;
+    activeCargoRun=runCargoPlan(input,{onProgress:progress=>{
+      if(generation!==cargoRunGeneration)return;
+      const count=progress.best?.loadedByProduct.reduce((sum,value)=>sum+value,0);
+      solveProgress.textContent='已试算 '+(progress.attempts??0)+' 个策略'+(count!==undefined?' · 最好方案 '+count+' 箱':'');
+    }});
+    const result=await activeCargoRun.promise;
+    if(generation!==cargoRunGeneration)return;
     acceptCargoResult(input,result);
-    if(window.restoringCargoSnapshot){window.restoringCargoSnapshot=false;compareRestoredCargoAudit()}
-    else await persistCargoSnapshot();
+    const labels={completed:'搜索完成（未证明最优）','time-limit':'达到时限，保留最好方案',cancelled:'已停止，保留最好方案',error:'优化中断，保留已校验方案'};
+    solveProgress.textContent=(labels[result.search?.stopReason]||'计算完成')+' · '+(result.search?.attempts??0)+' 次试算';
+    if(mode==='pallet')solveProgress.textContent+=' · 托盘安全基线';
+    if(restoring)compareRestoredCargoAudit();
+    else await persistCargoSnapshot({...snapshot,result:window.latestCargoAudit});
   }catch(error){
+    if(generation!==cargoRunGeneration)return;
     const warning=document.getElementById('warning');
     window.latestCargoResult=null;window.latestCargoAudit=null;
     document.getElementById('resultSub').textContent='未产生可执行结果';
     document.getElementById('scene').classList.add('hidden');
     document.getElementById('empty').classList.remove('hidden');
     for(const id of ['loadedMetric','volumeMetric','weightMetric','containerMetric'])document.getElementById(id).textContent='—';
+    for(const id of ['renderStatus','dimensionNote'])document.getElementById(id).classList.add('hidden');
+    document.getElementById('planDiagnostics').textContent='本次未生成有效方案，请调整条件后重算。';
+    document.getElementById('resultList').textContent='';
     warning.classList.remove('hidden');warning.textContent='计算未完成：'+(error.message||String(error));
-  }finally{btn.disabled=false;btn.textContent='重新计算方案'}
+    solveProgress.textContent=error.name==='AbortError'?'已取消':'计算失败';
+  }finally{
+    if(generation===cargoRunGeneration){
+      activeCargoRun=null;locked.forEach(([element,disabled])=>element.disabled=disabled);
+      btn.disabled=false;btn.textContent='重新计算方案';cancelSolve.classList.add('hidden');updateSearchModeHint();
+    }
+  }
 }
 document.getElementById('solve').onclick=solve;
 function renderResult(rows,loaded,all,vRate,wRate,cq,type,plan,solverResult){let cap=capacities[type],usedContainers=solverResult.metrics.containersUsed,diagnostics=solverResult.metrics.containerDiagnostics||[];document.getElementById('loadedMetric').textContent=`${loaded} / ${all}`;document.getElementById('volumeMetric').innerHTML=`${vRate.toFixed(1)}% <em>独立校验</em>`;document.getElementById('weightMetric').textContent=`${wRate.toFixed(1)}%`;document.getElementById('containerMetric').textContent=`${usedContainers} / ${cq} × ${type}`;document.getElementById('resultSub').textContent=mode==='pallet'?`几何校验通过 · ${solverResult.palletsUsed} 托 · ${solverResult.solverVersion}`:`几何校验通过 · ${solverResult.solverVersion}`;document.getElementById('empty').classList.add('hidden');document.getElementById('scene').classList.remove('hidden');let renderInfo=window.cargoViewer.render({container:cap,containerCount:Math.max(1,usedContainers),plan,products:rows,sceneItems:solverResult.sceneItems});let status=document.getElementById('renderStatus');status.classList.remove('hidden');status.textContent=`已渲染 ${plan.placements.length} / 已装 ${loaded} 箱${solverResult.palletsUsed?` · ${solverResult.palletsUsed} 托`:''}`;let primary=diagnostics[0]||{},occupiedLength=primary.occupiedLengthMm??Math.max(0,...plan.placements.filter(p=>p.ci===0).map(p=>p.x+p.l)),doorFree=primary.continuousDoorFreeMm??Math.max(0,cap.l-occupiedLength),note=document.getElementById('dimensionNote');note.classList.remove('hidden');note.textContent=`柜 1 已占用 ${Math.round(occupiedLength)} mm · 门口连续空余 ${Math.round(doorFree)} mm`;let support=`<span class="diagnostic-chip"><strong>最小支撑</strong> · ${((solverResult.metrics.minimumSupportRatio??0)*100).toFixed(1)}%</span>`;document.getElementById('planDiagnostics').innerHTML='<span class="diagnostic-chip">几何校验通过 · 非运输安全认证</span>'+support+(diagnostics.length?diagnostics.map(d=>`<span class="diagnostic-chip"><strong>柜 ${d.containerIndex+1}</strong> · 门口 ${Math.round(d.continuousDoorFreeMm)} mm · 纵向重心 ${Math.round(d.longitudinalCenterOffsetMm)} mm · 横向 ${Math.round(d.lateralCenterOffsetMm)} mm</span>`).join(''):'<span class="diagnostic-chip">暂无每柜诊断</span>');document.getElementById('legend').innerHTML=rows.map(p=>`<span><i class="dot" style="background:${p.color}"></i>${escapeHtml(p.sku)} · 组 ${p.group} · ${p.loaded} 箱</span>`).join('')+`<span class="count-note">左键旋转 · 滚轮缩放 · 右键平移 · 点击固定信息</span>`;document.getElementById('resultList').innerHTML='<div class="resultrow head"><span>产品</span><span>已装</span><span>剩余</span><span>状态</span></div>'+rows.map(p=>`<div class="resultrow"><span><b>${escapeHtml(p.name)}</b><small style="display:block;color:var(--muted)">${escapeHtml(p.sku)} · 组 ${p.group}</small>${p.left&&p.unloadedReason?`<small class="reason">${escapeHtml(p.unloadedReason)}</small>`:''}</span><span>${p.loaded}</span><span>${p.left}</span><span><i class="badge">${p.left?'部分装载':'已装完'}</i></span></div>`).join('');let left=all-loaded,w=document.getElementById('warning'),messages=[...(solverResult.warnings||[])];if(left&&!messages.length)messages.push(`有 ${left} 箱未装入。请增加柜数或调整尺寸、朝向和装载条件。`);w.classList.toggle('hidden',messages.length===0);w.textContent=messages.join(' ')}
@@ -212,11 +254,11 @@ function showCargoSnapshotLink(url,id,resultHash){
     status.append(audit);
   }
 }
-async function persistCargoSnapshot(){
+async function persistCargoSnapshot(snapshot=cargoSnapshotFromForm()){
   const status=document.getElementById('shareStatus');
   status.textContent='正在生成测试网址…';
   try{
-    const response=await fetch('/api/cargo-snapshots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cargoSnapshotFromForm())});
+    const response=await fetch('/api/cargo-snapshots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(snapshot)});
     const result=await response.json();
     if(!response.ok||!result.id)throw new Error(result.error||'保存失败');
     const url=new URL(window.location.href);
@@ -247,15 +289,17 @@ function applyCargoSnapshot(snapshot){
   document.getElementById('palletGap').value=snapshot.pallet.gap;
   document.getElementById('palletPackingMode').value=snapshot.pallet.packingMode;
   document.getElementById('allowLooseCargo').value=String(snapshot.pallet.allowLooseCargo);
+  updateSearchModeHint();
 }
 function compareRestoredCargoAudit(){
   const snapshot=window.restoredCargoSnapshot;
   if(!snapshot)return;
   const current=window.latestCargoAudit;
-  const matches=!!snapshot.result&&!!current&&snapshot.result.solverVersion===current.solverVersion&&JSON.stringify(snapshot.result.loadedByProduct)===JSON.stringify(current.loadedByProduct);
+  const sameVersion=!!snapshot.result&&!!current&&snapshot.result.solverVersion===current.solverVersion;
+  const matches=sameVersion&&!!snapshot.result.layoutFingerprint&&snapshot.result.layoutFingerprint===current.layoutFingerprint&&JSON.stringify(snapshot.result.loadedByProduct)===JSON.stringify(current.loadedByProduct);
   showCargoSnapshotLink(window.location.href,new URL(window.location.href).searchParams.get('s'),snapshot.resultHash);
   const message=document.createElement('span');
-  message.textContent=!snapshot.result?'旧网址仅含条件，已用当前求解器重算':matches?'复算结果一致':'复算结果与保存结果不同，请按该网址报告回归问题';
+  message.textContent=!snapshot.result?'旧网址仅含条件，已用当前求解器重算':matches?'复算布局与数量一致':!sameVersion?'算法版本已更新，已按原条件复算':!snapshot.result.layoutFingerprint?'旧网址未保存布局指纹，无法核实逐箱位置一致':'本次布局与保存结果不同；时限或设备速度可能影响候选，请按此网址反馈';
   message.style.color=matches?'var(--green)':'var(--amber)';
   document.getElementById('shareStatus').append(message);
 }

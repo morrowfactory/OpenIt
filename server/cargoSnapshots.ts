@@ -52,7 +52,29 @@ type CargoSnapshotResult = {
     minimumSupportRatio: number;
     containerDiagnostics: ContainerDiagnostic[];
   };
+  layoutFingerprint?: string;
+  search?: {
+    budgetMs?: number;
+    elapsedMs?: number;
+    attempts?: number;
+    validCandidates?: number;
+    rejectedCandidates?: number;
+    bestAttempt?: number;
+    strategy?: string;
+    stopReason?: "completed" | "time-limit" | "cancelled" | "error";
+  };
 };
+
+type ContainerSafety = Partial<
+  Record<
+    | "doorWidthMm"
+    | "doorHeightMm"
+    | "maxFloorLoadKgM2"
+    | "maxLongitudinalOffsetMm"
+    | "maxLateralOffsetMm",
+    number | null
+  >
+>;
 
 export type CargoSnapshot = {
   version: 2;
@@ -60,6 +82,7 @@ export type CargoSnapshot = {
   products: CargoProduct[];
   containerType: "20GP" | "40GP" | "40HQ";
   containerQty: number;
+  containerSafety?: ContainerSafety;
   looseCargoMaxGapMm: number;
   priorityGroupMode: "virtual-wall" | "no-cross-stacking" | "allow-stacking";
   optimizationGoal: "complete-order" | "volume" | "weight-balance";
@@ -72,6 +95,9 @@ export type CargoSnapshot = {
     gap: number;
     packingMode: "single-sku" | "mixed-max";
     allowLooseCargo: boolean;
+    heightMm?: number;
+    emptyWeightKg?: number | null;
+    maxLoadKg?: number | null;
   };
   result: CargoSnapshotResult | null;
   resultHash: string | null;
@@ -123,6 +149,12 @@ function booleanValue(value: unknown, field: string): boolean {
   return value;
 }
 
+function objectValue(value: unknown, field: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error(`${field} must be an object`);
+  return value as Record<string, unknown>;
+}
+
 export function normalizeCargoSnapshot(value: unknown): CargoSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("snapshot must be an object");
@@ -145,6 +177,49 @@ export function normalizeCargoSnapshot(value: unknown): CargoSnapshot {
     throw new Error("pallet must be an object");
   }
   const pallet = palletInput as Record<string, unknown>;
+  const palletExtras: Pick<
+    CargoSnapshot["pallet"],
+    "heightMm" | "emptyWeightKg" | "maxLoadKg"
+  > = {};
+  if (pallet.heightMm !== undefined) {
+    palletExtras.heightMm = finiteNumber(pallet.heightMm, "pallet.heightMm", {
+      min: Number.MIN_VALUE,
+      max: 2000,
+    });
+  }
+  for (const field of ["emptyWeightKg", "maxLoadKg"] as const) {
+    if (pallet[field] !== undefined) {
+      palletExtras[field] =
+        pallet[field] === null
+          ? null
+          : finiteNumber(pallet[field], `pallet.${field}`, {
+              min: field === "emptyWeightKg" ? 0 : Number.MIN_VALUE,
+              max: 100_000,
+            });
+    }
+  }
+  let containerSafety: ContainerSafety | undefined;
+  if (input.containerSafety !== undefined) {
+    const safety = objectValue(input.containerSafety, "containerSafety");
+    containerSafety = {};
+    for (const field of [
+      "doorWidthMm",
+      "doorHeightMm",
+      "maxFloorLoadKgM2",
+      "maxLongitudinalOffsetMm",
+      "maxLateralOffsetMm",
+    ] as const) {
+      if (safety[field] !== undefined) {
+        containerSafety[field] =
+          safety[field] === null
+            ? null
+            : finiteNumber(safety[field], `containerSafety.${field}`, {
+                min: field.endsWith("OffsetMm") ? 0 : Number.MIN_VALUE,
+                max: field === "maxFloorLoadKgM2" ? 100_000 : 50_000,
+              });
+      }
+    }
+  }
   const products = input.products.map((entry, index) => {
     if (!entry || typeof entry !== "object" || Array.isArray(entry))
       throw new Error(`products[${index}] is invalid`);
@@ -336,6 +411,59 @@ export function normalizeCargoSnapshot(value: unknown): CargoSnapshot {
         ),
       },
     };
+    if (resultInput.layoutFingerprint !== undefined) {
+      const fingerprint = shortText(
+        resultInput.layoutFingerprint,
+        "result.layoutFingerprint",
+        64
+      ).toLowerCase();
+      if (!/^[a-f0-9]{64}$/u.test(fingerprint))
+        throw new Error("result.layoutFingerprint is invalid");
+      result.layoutFingerprint = fingerprint;
+    }
+    if (resultInput.search !== undefined) {
+      const searchInput = objectValue(resultInput.search, "result.search");
+      const search: NonNullable<CargoSnapshotResult["search"]> = {};
+      for (const field of [
+        "budgetMs",
+        "elapsedMs",
+        "attempts",
+        "validCandidates",
+        "rejectedCandidates",
+        "bestAttempt",
+      ] as const) {
+        if (searchInput[field] !== undefined) {
+          search[field] = finiteNumber(
+            searchInput[field],
+            `result.search.${field}`,
+            {
+              integer: field !== "elapsedMs",
+              min: field === "budgetMs" ? 1 : 0,
+              max:
+                field === "budgetMs"
+                  ? 120_000
+                  : field === "elapsedMs"
+                    ? 130_000
+                    : 1_000_000,
+            }
+          );
+        }
+      }
+      if (searchInput.strategy !== undefined)
+        search.strategy = shortText(
+          searchInput.strategy,
+          "result.search.strategy",
+          80
+        );
+      if (searchInput.stopReason !== undefined) {
+        search.stopReason = enumValue(
+          searchInput.stopReason,
+          "result.search.stopReason",
+          ["completed", "time-limit", "cancelled", "error"] as const
+        );
+      }
+      result.search = search;
+    }
   }
   const resultHash = result
     ? createHash("sha256")
@@ -358,6 +486,7 @@ export function normalizeCargoSnapshot(value: unknown): CargoSnapshot {
       min: 1,
       max: 20,
     }),
+    ...(containerSafety === undefined ? {} : { containerSafety }),
     looseCargoMaxGapMm: finiteNumber(
       input.looseCargoMaxGapMm,
       "looseCargoMaxGapMm",
@@ -415,6 +544,7 @@ export function normalizeCargoSnapshot(value: unknown): CargoSnapshot {
         pallet.allowLooseCargo,
         "pallet.allowLooseCargo"
       ),
+      ...palletExtras,
     },
     result,
     resultHash,

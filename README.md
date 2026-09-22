@@ -95,6 +95,8 @@ Reproducible short links retain the input conditions and result summary. Old lin
 
 `search.js` supplements the baseline with a deterministic sequence of maximal-space candidates, different product orders and orientations. `engine.js` audits each candidate and keeps the best valid result: loading count/volume, container count, then balance or compactness according to the selected goal. Longer searches retain their shorter deterministic prefix; a completed finite search is not proof of optimality. Pallet packing currently uses the corrected layer-based baseline, not the loose-carton multi-start search.
 
+Calculations run in a module Web Worker with real 5-second, 30-second or 2-minute upper budgets. Cancellation and the watchdog retain only an independently validated best result. Inputs are locked during a run and the short link saves that run's captured configuration, search summary and SHA-256 layout fingerprint. Replaying the same conditions on a different device or solver version may stop at a different candidate; the page compares layouts instead of claiming equivalence from carton counts alone.
+
 ## Deployment
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the production process, PM2 naming, and historical aliases.

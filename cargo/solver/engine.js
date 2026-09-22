@@ -45,6 +45,15 @@ export function assessPlan(input, result) {
   };
 }
 
+export async function fingerprintLayout(result) {
+  const geometry = (result.sceneItems ?? []).map(item => [item.kind, item.containerIndex, item.productIndex,
+    item.originMm.x, item.originMm.y, item.originMm.z,
+    item.dimensionsMm.length, item.dimensionsMm.width, item.dimensionsMm.height]);
+  geometry.sort((a, b) => { const left=JSON.stringify(a),right=JSON.stringify(b);return left<right?-1:left>right?1:0; });
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(geometry)));
+  return [...new Uint8Array(hash)].map(value => value.toString(16).padStart(2, '0')).join('');
+}
+
 export async function solvePlan(input, controls = {}) {
   const now = controls.now ?? (() => performance.now());
   const started = now(), budgetMs = Math.max(1, Math.min(120000, controls.budgetMs ?? 30000));
@@ -61,7 +70,8 @@ export async function solvePlan(input, controls = {}) {
         validCandidates++;
         if (comparePlans(candidate, best, input) > 0) {
           best = candidate; bestAttempt = event.attempt; strategy = event.strategy;
-          best.solverVersion = 'cargo-search/0.7.0';
+          best.solverVersion = 'cargo-search/0.8.0';
+          best.layoutFingerprint = await fingerprintLayout(best);
           best.search = summary('completed');
           controls.onProgress?.({ attempts, validCandidates, rejectedCandidates, best });
         }

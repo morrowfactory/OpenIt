@@ -26,3 +26,10 @@ test('viewer bundle no longer contains an obsolete second packing algorithm', ()
   assert.doesNotMatch(source, /window\.cargoSolver|const gl =/);
   assert.match(source, /window\.cargoViewer/);
 });
+
+test('async calculation freezes inputs and saves its captured configuration', () => {
+  assert.match(html, /locked\.forEach\(\(\[element\]\)=>element\.disabled=true\)/);
+  assert.match(html, /persistCargoSnapshot\(\{\.\.\.snapshot,result:window\.latestCargoAudit\}\)/);
+  assert.match(html, /runCargoPlan\(input/);
+  assert.doesNotMatch(html, /await solvePlan\(input\)/);
+});
