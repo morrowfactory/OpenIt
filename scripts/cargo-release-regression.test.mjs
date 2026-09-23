@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -57,6 +57,9 @@ test('workflow separates installation, public acceptance, final marker and failu
   const workflow = await readFile(path.join(repository, '.github/workflows/deploy-openit.yml'), 'utf8');
   assert.ok(workflow.indexOf('id: install') < workflow.indexOf('id: acceptance'));
   assert.ok(workflow.indexOf('id: acceptance') < workflow.indexOf('id: finalize'));
+  assert.ok(workflow.indexOf('id: finalize') < workflow.indexOf('id: cleanup'));
+  assert.ok(workflow.indexOf('id: cleanup') < workflow.indexOf('Inventory retained release artifacts'));
+  assert.match(workflow, /id: cleanup[\s\S]*steps\.finalize\.outcome == 'success'[\s\S]*continue-on-error: true/);
   assert.match(workflow, /always\(\).*steps\.finalize\.outcome != 'success'/);
   assert.ok(workflow.match(/git fetch origin main/g).length >= 3);
   assert.match(workflow, /https:\/\/openit\.cc/);
@@ -64,8 +67,12 @@ test('workflow separates installation, public acceptance, final marker and failu
   assert.ok(!workflow.includes('"${{ inputs.release_sha }}"'), 'Dispatch input must enter shell through env, not source interpolation');
   const installer = await readFile(path.join(repository, 'scripts/cargo-release-install.sh'), 'utf8');
   assert.ok(!installer.includes('|| true'));
-  assert.ok(!installer.includes('rm -'));
   assert.ok(!installer.includes('pnpm install'));
+  assert.ok(!installer.includes('rm -rf "$WEB_ROOT"'));
+  assert.match(installer, /cleanup_accepted_releases\(\)/);
+  assert.match(installer, /retained_count < 3/);
+  assert.match(installer, /rm -rf --one-file-system -- "\$backup"/);
+  assert.match(installer, /rm -f -- "\$artifact"/);
   assert.match(installer, /sync -f "\$BACKUP_DIR\/exchanges.log"/);
   assert.match(installer, /library\.renameat2/);
 });
@@ -172,8 +179,56 @@ test('Linux atomic exchange, partial failure and public-acceptance rollback pres
 
     await packageFor('100-4');
     success(run('apply', '100-4'));
+    const prematureCleanup = run('cleanup', '100-4');
+    assert.notEqual(prematureCleanup.status, 0, 'Cleanup must not run before the release is accepted');
+    assert.match(prematureCleanup.stderr, /not accepted/);
+    assert.ok((await readFile(path.join(incoming, `openit-${sha}-100-4.tar.gz`))).length > 0);
     success(run('finalize', '100-4'));
     assert.equal(await readFile(path.join(web, '.deploy-sha'), 'utf8'), sha + '\n');
+    const acceptedHistory = [
+      { name: `${'1'.repeat(40)}-90-1`, time: 1_700_000_001 },
+      { name: `${'2'.repeat(40)}-90-2`, time: 1_700_000_002 },
+      { name: `${'3'.repeat(40)}-90-3`, time: 1_700_000_003 },
+    ];
+    for (const item of acceptedHistory) {
+      const backup = path.join(backups, item.name), release = path.join(releases, item.name);
+      await mkdir(backup); await mkdir(release);
+      await writeFile(path.join(backup, 'accepted'), 'accepted\n');
+      await writeFile(path.join(backup, 'sentinel'), item.name);
+      await writeFile(path.join(release, 'sentinel'), item.name);
+      await utimes(path.join(backup, 'accepted'), item.time, item.time);
+    }
+    const unknownDirectory = path.join(backups, 'manual-investigation');
+    await mkdir(unknownDirectory); await writeFile(path.join(unknownDirectory, 'accepted'), 'not a managed release name');
+    success(run('cleanup', '100-4'));
+    await assert.rejects(readFile(path.join(backups, acceptedHistory[0].name, 'accepted')), { code: 'ENOENT' });
+    await assert.rejects(readFile(path.join(releases, acceptedHistory[0].name, 'sentinel')), { code: 'ENOENT' });
+    for (const item of acceptedHistory.slice(1)) {
+      assert.equal(await readFile(path.join(backups, item.name, 'sentinel'), 'utf8'), item.name);
+      assert.equal(await readFile(path.join(releases, item.name, 'sentinel'), 'utf8'), item.name);
+    }
+    assert.equal(await readFile(path.join(unknownDirectory, 'accepted'), 'utf8'), 'not a managed release name');
+    await assert.rejects(readFile(path.join(incoming, `openit-${sha}-100-4.tar.gz`)), { code: 'ENOENT' });
+    await assert.rejects(readFile(path.join(incoming, `openit-${sha}-100-4.tar.gz.sha256`)), { code: 'ENOENT' });
+    assert.ok((await readFile(path.join(backups, `${sha}-100-3`, 'restored'), 'utf8')).trim(),
+      'Unaccepted interrupted-run evidence must remain');
+
+    const irregularName = `${'4'.repeat(40)}-90-4`;
+    const irregularBackup = path.join(backups, irregularName);
+    const irregularRelease = path.join(releases, irregularName);
+    await mkdir(irregularBackup);
+    await writeFile(path.join(irregularBackup, 'accepted'), 'accepted\n');
+    await utimes(path.join(irregularBackup, 'accepted'), 1_699_999_999, 1_699_999_999);
+    await symlink(unknownDirectory, irregularRelease);
+    const irregularCleanup = run('cleanup', '100-4');
+    assert.notEqual(irregularCleanup.status, 0, 'A symlinked managed release path must stop cleanup');
+    assert.match(irregularCleanup.stderr, /Irregular release path/);
+    assert.equal(await readFile(path.join(unknownDirectory, 'accepted'), 'utf8'), 'not a managed release name');
+    assert.equal(await readFile(path.join(irregularBackup, 'accepted'), 'utf8'), 'accepted\n');
+    await rm(irregularRelease);
+    await mkdir(irregularRelease);
+    success(run('cleanup', '100-4')); // Idempotent once the accepted set is within policy.
+    await assert.rejects(readFile(path.join(irregularBackup, 'accepted')), { code: 'ENOENT' });
     success(run('inventory', '100-4'));
     await checkProtected();
   } finally {

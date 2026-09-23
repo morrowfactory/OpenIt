@@ -168,6 +168,23 @@ jobs:
             -i ~/.ssh/openit_deploy -p "$OPENIT_DEPLOY_PORT" "$OPENIT_DEPLOY_USER@$OPENIT_DEPLOY_HOST" \
             "bash -s -- finalize '$RELEASE_SHA' '$RUN_KEY'" < scripts/cargo-release-install.sh
 
+      - name: Retain latest three accepted releases and remove this upload
+        id: cleanup
+        if: ${{ steps.finalize.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          OPENIT_DEPLOY_HOST: ${{ secrets.OPENIT_DEPLOY_HOST }}
+          OPENIT_DEPLOY_PORT: ${{ secrets.OPENIT_DEPLOY_PORT }}
+          OPENIT_DEPLOY_USER: ${{ secrets.OPENIT_DEPLOY_USER }}
+          OPENIT_WEB_ROOT: ${{ secrets.OPENIT_WEB_ROOT }}
+        run: |
+          set -euo pipefail
+          test "$OPENIT_WEB_ROOT" = /www/wwwroot/openit.cc
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            -i ~/.ssh/openit_deploy -p "$OPENIT_DEPLOY_PORT" "$OPENIT_DEPLOY_USER@$OPENIT_DEPLOY_HOST" \
+            "bash -s -- cleanup '$RELEASE_SHA' '$RUN_KEY'" < scripts/cargo-release-install.sh
+
       - name: Restore previous code after installation or acceptance failure
         if: ${{ always() && (steps.install.outcome == 'success' || steps.install.outcome == 'failure' || steps.install.outcome == 'cancelled') && steps.finalize.outcome != 'success' }}
         shell: bash
@@ -183,7 +200,7 @@ jobs:
             -i ~/.ssh/openit_deploy -p "$OPENIT_DEPLOY_PORT" "$OPENIT_DEPLOY_USER@$OPENIT_DEPLOY_HOST" \
             "bash -s -- rollback '$RELEASE_SHA' '$RUN_KEY'" < scripts/cargo-release-install.sh
 
-      - name: Inventory retained release artifacts without deletion
+      - name: Inventory retained release artifacts
         if: ${{ always() && steps.ssh.outcome == 'success' && steps.install.outcome != 'skipped' }}
         continue-on-error: true
         shell: bash

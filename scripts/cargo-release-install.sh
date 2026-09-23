@@ -9,7 +9,7 @@ ACTION="${1:?action required}"
 RELEASE_SHA="${2:?release SHA required}"
 RUN_KEY="${3:?GitHub run ID and attempt required}"
 [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ && "$RUN_KEY" =~ ^[0-9]+-[0-9]+$ ]] || exit 2
-case "$ACTION" in apply|rollback|finalize|inventory) ;; *) exit 2 ;; esac
+case "$ACTION" in apply|rollback|finalize|cleanup|inventory) ;; *) exit 2 ;; esac
 
 WEB_ROOT="/www/wwwroot/openit.cc"
 NODE_DIR="/www/server/nodejs/v24.18.0/bin"
@@ -218,6 +218,58 @@ NODE
   echo 'All code units exchanged and locally healthy. Accepted release marker is not changed yet.'
 }
 
+cleanup_accepted_releases() {
+  local current name backup release timestamp retained_count=0 removed_count=0 removed_bytes=0 bytes=0 release_bytes=0
+  local records="$BACKUP_DIR/accepted-retention.list" sorted="$BACKUP_DIR/accepted-retention.sorted"
+  [[ -f "$BACKUP_DIR/accepted" && ! -L "$BACKUP_DIR/accepted" ]] || { echo 'Current release is not accepted; refusing cleanup.' >&2; return 1; }
+  [[ -f "$WEB_ROOT/.deploy-sha" && ! -L "$WEB_ROOT/.deploy-sha" ]] || return 1
+  current="$(cat "$WEB_ROOT/.deploy-sha")"
+  [[ "$current" == "$RELEASE_SHA" ]] || { echo 'Accepted marker no longer matches this release; refusing cleanup.' >&2; return 1; }
+  : > "$records"
+  for backup in "$BACKUP_BASE"/*; do
+    [[ -d "$backup" && ! -L "$backup" ]] || continue
+    name="${backup##*/}"
+    [[ "$name" =~ ^[0-9a-f]{40}-[0-9]+-[0-9]+$ ]] || continue
+    [[ -f "$backup/accepted" && ! -L "$backup/accepted" ]] || continue
+    timestamp="$(stat -c %Y "$backup/accepted")"
+    if [[ "$name" == "$RELEASE_SHA-$RUN_KEY" ]]; then timestamp=99999999999; fi
+    printf '%s|%s\n' "$timestamp" "$name" >> "$records"
+  done
+  sort -t '|' -k1,1nr -k2,2r "$records" > "$sorted"
+  while IFS='|' read -r _ name; do
+    [[ -n "$name" ]] || continue
+    backup="$BACKUP_BASE/$name"; release="$RELEASE_BASE/$name"
+    if (( retained_count < 3 )); then
+      retained_count=$((retained_count + 1))
+      continue
+    fi
+    [[ "$name" != "$RELEASE_SHA-$RUN_KEY" ]] || { echo 'Current release fell outside retention set; refusing cleanup.' >&2; return 1; }
+    [[ -d "$backup" && ! -L "$backup" && -f "$backup/accepted" && ! -L "$backup/accepted" ]] || return 1
+    if [[ -e "$release" || -L "$release" ]]; then
+      [[ -d "$release" && ! -L "$release" ]] || { echo "Irregular release path: $name" >&2; return 1; }
+    fi
+    bytes="$(du -sb "$backup" | awk '{print $1}')"
+    if [[ -d "$release" ]]; then
+      release_bytes="$(du -sb "$release" | awk '{print $1}')"
+      bytes=$((bytes + release_bytes))
+    fi
+    if [[ -d "$release" ]]; then rm -rf --one-file-system -- "$release"; fi
+    rm -rf --one-file-system -- "$backup"
+    removed_count=$((removed_count + 1)); removed_bytes=$((removed_bytes + bytes))
+    printf 'Removed expired accepted release: %s (%s bytes)\n' "$name" "$bytes"
+  done < "$sorted"
+  for artifact in "$PACKAGE" "$CHECKSUM" "$PACKAGE.entries" "$PACKAGE.types"; do
+    if [[ -e "$artifact" || -L "$artifact" ]]; then
+      [[ -f "$artifact" && ! -L "$artifact" ]] || { echo "Irregular temporary artifact: $artifact" >&2; return 1; }
+      bytes="$(stat -c %s "$artifact")"
+      rm -f -- "$artifact"
+      removed_bytes=$((removed_bytes + bytes))
+    fi
+  done
+  printf 'Retention complete: %s accepted versions retained, %s expired accepted versions removed, %s bytes reclaimed.\n' "$retained_count" "$removed_count" "$removed_bytes"
+  printf 'Unaccepted or interrupted run directories are retained for diagnosis and are not counted as accepted versions.\n'
+}
+
 case "$ACTION" in
   apply)
     trap apply_finished EXIT
@@ -237,6 +289,7 @@ case "$ACTION" in
     date -u +%FT%TZ > "$BACKUP_DIR/accepted"
     printf 'Accepted deployed SHA: %s\n' "$RELEASE_SHA"
     ;;
+  cleanup) cleanup_accepted_releases ;;
   inventory)
     for directory in "$RELEASE_BASE" "$BACKUP_BASE"; do
       if [[ -d "$directory" ]]; then
@@ -244,7 +297,14 @@ case "$ACTION" in
         printf 'Top-level artifacts: '; find "$directory" -mindepth 1 -maxdepth 1 -printf '.' | wc -c
       fi
     done
+    accepted_count=0
+    for backup in "$BACKUP_BASE"/*; do
+      [[ -d "$backup" && ! -L "$backup" ]] || continue
+      name="${backup##*/}"
+      [[ "$name" =~ ^[0-9a-f]{40}-[0-9]+-[0-9]+$ && -f "$backup/accepted" && ! -L "$backup/accepted" ]] || continue
+      accepted_count=$((accepted_count + 1))
+    done
+    printf 'Accepted versions retained: %s (policy maximum: 3)\n' "$accepted_count"
     for artifact in "$PACKAGE" "$CHECKSUM"; do if [[ -f "$artifact" ]]; then du -h "$artifact"; fi; done
-    echo 'No release-artifact retention policy is approved; inventory only, nothing deleted.'
     ;;
 esac
