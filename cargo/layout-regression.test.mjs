@@ -33,12 +33,13 @@ test("desktop panel sizing keeps both panes above their minimum widths", () => {
   );
 });
 
-test("the default panel ratio is 52 percent and remains a local UI preference", () => {
+test("the wider input pane remains a local UI preference", () => {
   const { limits, ratio } = loadPanelHelpers();
   const workspaceWidth = 1432;
   const left = workspaceWidth * limits.defaultRatio;
-  assert.equal(limits.defaultRatio, 0.52);
-  assert.equal(ratio(workspaceWidth, left), 0.52);
+  assert.equal(limits.defaultRatio, 0.56);
+  assert.equal(ratio(workspaceWidth, left), 0.56);
+  assert.match(html, /cargo\.workspace\.leftRatio\.v2/);
   const snapshotFunction = html.slice(
     html.indexOf("function cargoSnapshotFromForm"),
     html.indexOf(
@@ -47,6 +48,17 @@ test("the default panel ratio is 52 percent and remains a local UI preference", 
     )
   );
   assert.doesNotMatch(snapshotFunction, /cargoPanelStorageKey|leftRatio/);
+});
+
+test("the planner uses the viewport width and keeps loading details in the input pane", () => {
+  assert.match(html, /\.main\{width:100%;max-width:none;margin:0;/);
+  const inputStart = html.indexOf('<section class="stack" id="cargoInputsStack">');
+  const splitter = html.indexOf('id="workspaceSplitter"');
+  const details = html.indexOf('class="card cargo-load-details"');
+  const preview = html.indexOf('<section class="stack" id="cargoPreviewStack">');
+  assert.ok(inputStart >= 0 && details > inputStart && details < splitter);
+  assert.ok(preview > splitter);
+  assert.equal(html.match(/id="resultList"/g)?.length, 1);
 });
 
 test("the splitter exposes pointer and keyboard accessible separator semantics", () => {
